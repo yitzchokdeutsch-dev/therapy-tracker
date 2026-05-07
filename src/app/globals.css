@@ -1,0 +1,46 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-surface-50 text-ink-900 antialiased; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-600 text-white px-5 py-2.5 rounded-lg font-semibold text-sm
+      hover:bg-brand-700 active:bg-brand-800 transition-colors
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-outline {
+    @apply border border-surface-300 text-ink-700 px-5 py-2.5 rounded-lg font-semibold text-sm
+      hover:bg-surface-100 active:bg-surface-200 transition-colors;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white px-5 py-2.5 rounded-lg font-semibold text-sm
+      hover:bg-red-700 transition-colors;
+  }
+  .btn-ghost {
+    @apply text-ink-500 px-3 py-2 rounded-lg font-medium text-sm
+      hover:bg-surface-100 hover:text-ink-700 transition-colors;
+  }
+  .btn-sm { @apply px-3.5 py-1.5 text-xs; }
+  .input-field {
+    @apply w-full px-3.5 py-2.5 rounded-lg border border-surface-300 text-sm
+      focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500
+      placeholder:text-ink-400 transition-all;
+  }
+  .card { @apply bg-white rounded-xl border border-surface-200 shadow-sm; }
+  .label { @apply block text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5; }
+  .badge { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold; }
+  .badge-blue { @apply bg-brand-100 text-brand-700; }
+  .badge-green { @apply bg-emerald-100 text-emerald-700; }
+  .badge-red { @apply bg-red-100 text-red-700; }
+  .badge-amber { @apply bg-amber-100 text-amber-700; }
+  .badge-gray { @apply bg-surface-100 text-ink-500; }
+  .table-header { @apply text-left text-xs font-semibold text-ink-500 uppercase tracking-wide px-4 py-3; }
+  .table-cell { @apply px-4 py-3 text-sm; }
+  .table-row { @apply border-t border-surface-200 hover:bg-surface-50 transition-colors; }
+}
