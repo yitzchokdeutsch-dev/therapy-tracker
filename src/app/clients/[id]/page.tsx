@@ -3,18 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
+import type { Client, Therapist, ServiceType, ClientNote, ClientFile } from "@/lib/types";
 
-interface Client {
-  id: string; first_name: string; last_name: string; phone: string; email: string;
-  guardian: string; address: string; therapist_id: string; service_type_id: string;
-  session_days: number[]; start_date: string; active: boolean; notes: string;
-}
-interface Therapist { id: string; name: string; color: string; }
-interface ServiceType { id: string; name: string; duration: number; rate: number; }
-interface Note { id: string; client_id: string; title: string; content: string; category: string; created_at: string; updated_at: string; }
-interface ClientFile { id: string; client_id: string; file_name: string; file_type: string; file_size: number; storage_path: string; category: string; notes: string; created_at: string; }
-
-const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri"];
 const NOTE_CATEGORIES = [
   { value: "general", label: "General", color: "badge-blue" },
   { value: "evaluation", label: "Evaluation", color: "badge-amber" },
@@ -23,6 +14,7 @@ const NOTE_CATEGORIES = [
   { value: "insurance", label: "Insurance", color: "badge-gray" },
   { value: "other", label: "Other", color: "badge-gray" },
 ];
+
 const FILE_CATEGORIES = [
   { value: "evaluation", label: "Evaluation" },
   { value: "insurance", label: "Insurance" },
@@ -40,18 +32,16 @@ export default function ClientDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [therapist, setTherapist] = useState<Therapist | null>(null);
   const [serviceType, setServiceType] = useState<ServiceType | null>(null);
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<ClientNote[]>([]);
   const [files, setFiles] = useState<ClientFile[]>([]);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const [tab, setTab] = useState<"notes" | "files">("notes");
-
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [editNoteId, setEditNoteId] = useState<string | null>(null);
   const [noteForm, setNoteForm] = useState({ title: "", content: "", category: "general" });
   const [savingNote, setSavingNote] = useState(false);
-
   const [uploading, setUploading] = useState(false);
   const [fileCategory, setFileCategory] = useState("evaluation");
   const [fileNote, setFileNote] = useState("");
@@ -61,42 +51,30 @@ export default function ClientDetailPage() {
     if (!c) { setLoading(false); return; }
     setClient(c);
 
-    const notesRes = await supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false });
+    const [notesRes, filesRes, chargesRes, paymentsRes] = await Promise.all([
+      supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
+      supabase.from("client_files").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
+      supabase.from("charges").select("amount").eq("client_id", clientId),
+      supabase.from("payments").select("amount").eq("client_id", clientId),
+    ]);
+
     setNotes(notesRes.data || []);
-
-    const filesRes = await supabase.from("client_files").select("*").eq("client_id", clientId).order("created_at", { ascending: false });
     setFiles(filesRes.data || []);
-
-    const chargesRes = await supabase.from("charges").select("amount").eq("client_id", clientId);
-    const paymentsRes = await supabase.from("payments").select("amount").eq("client_id", clientId);
     const totalCharges = (chargesRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
     const totalPayments = (paymentsRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
     setBalance(totalCharges - totalPayments);
 
-    if (c.therapist_id) {
-      const tRes = await supabase.from("therapists").select("*").eq("id", c.therapist_id).single();
-      setTherapist(tRes.data);
-    }
-    if (c.service_type_id) {
-      const sRes = await supabase.from("service_types").select("*").eq("id", c.service_type_id).single();
-      setServiceType(sRes.data);
-    }
-
+    const [tRes, sRes] = await Promise.all([
+      c.therapist_id ? supabase.from("therapists").select("*").eq("id", c.therapist_id).single() : Promise.resolve({ data: null }),
+      c.service_type_id ? supabase.from("service_types").select("*").eq("id", c.service_type_id).single() : Promise.resolve({ data: null }),
+    ]);
+    setTherapist(tRes.data);
+    setServiceType(sRes.data);
     setLoading(false);
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const openNewNote = () => {
-    setNoteForm({ title: "", content: "", category: "general" });
-    setEditNoteId(null);
-    setShowNoteForm(true);
-  };
-  const openEditNote = (n: Note) => {
-    setNoteForm({ title: n.title, content: n.content || "", category: n.category });
-    setEditNoteId(n.id);
-    setShowNoteForm(true);
-  };
   const saveNote = async () => {
     if (!noteForm.title.trim()) return;
     setSavingNote(true);
@@ -116,6 +94,7 @@ export default function ClientDetailPage() {
     setShowNoteForm(false);
     load();
   };
+
   const deleteNote = async (id: string) => {
     if (!confirm("Delete this note?")) return;
     await supabase.from("client_notes").delete().eq("id", id);
@@ -126,16 +105,13 @@ export default function ClientDetailPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-
     const path = `${clientId}/${Date.now()}-${file.name}`;
     const { error: uploadError } = await supabase.storage.from("client-files").upload(path, file);
-
     if (uploadError) {
       alert("Upload failed: " + uploadError.message);
       setUploading(false);
       return;
     }
-
     await supabase.from("client_files").insert({
       client_id: clientId,
       file_name: file.name,
@@ -145,7 +121,6 @@ export default function ClientDetailPage() {
       category: fileCategory,
       notes: fileNote.trim() || null,
     });
-
     setFileNote("");
     setUploading(false);
     e.target.value = "";
@@ -159,10 +134,7 @@ export default function ClientDetailPage() {
     load();
   };
 
-  const getFileUrl = (path: string) => {
-    const { data } = supabase.storage.from("client-files").getPublicUrl(path);
-    return data.publicUrl;
-  };
+  const getFileUrl = (path: string) => supabase.storage.from("client-files").getPublicUrl(path).data.publicUrl;
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
@@ -170,9 +142,6 @@ export default function ClientDetailPage() {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const formatDateTime = (d: string) => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
-  const fmt = (n: number) => "$" + Math.abs(n).toFixed(2);
   const getCatBadge = (cat: string) => NOTE_CATEGORIES.find((c) => c.value === cat) || NOTE_CATEGORIES[5];
 
   if (loading) return <div className="text-ink-400 py-12 text-center">Loading...</div>;
@@ -212,39 +181,39 @@ export default function ClientDetailPage() {
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Service</div>
-          <div className="font-semibold text-sm">{serviceType?.name || "\u2014"}</div>
+          <div className="font-semibold text-sm">{serviceType?.name || "—"}</div>
           {serviceType && <div className="text-xs text-ink-400">${Number(serviceType.rate).toFixed(2)} / session</div>}
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Schedule</div>
           <div className="font-semibold text-sm">
-            {client.session_days?.length > 0 ? client.session_days.map((d) => DAYS[d]).join(", ") : "\u2014"}
+            {client.session_days?.length > 0 ? client.session_days.map((d) => DAYS[d]).join(", ") : "—"}
           </div>
           {serviceType && <div className="text-xs text-ink-400">{serviceType.duration} min sessions</div>}
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Since</div>
-          <div className="font-semibold text-sm">{client.start_date ? formatDate(client.start_date) : "\u2014"}</div>
+          <div className="font-semibold text-sm">{client.start_date ? formatDate(client.start_date) : "—"}</div>
           <div className="text-xs text-ink-400">{client.active ? "Active" : "Inactive"}</div>
         </div>
       </div>
 
       <div className="flex gap-1 bg-surface-100 rounded-lg p-1 w-fit mb-4">
-        <button onClick={() => setTab("notes")}
-          className={`px-5 py-2 rounded-md text-sm font-semibold transition-all ${tab === "notes" ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
-          Notes ({notes.length})
-        </button>
-        <button onClick={() => setTab("files")}
-          className={`px-5 py-2 rounded-md text-sm font-semibold transition-all ${tab === "files" ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
-          Files ({files.length})
-        </button>
+        {(["notes", "files"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-5 py-2 rounded-md text-sm font-semibold transition-all ${tab === t ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
+            {t === "notes" ? `Notes (${notes.length})` : `Files (${files.length})`}
+          </button>
+        ))}
       </div>
 
       {tab === "notes" && (
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-ink-500">{notes.length} note{notes.length !== 1 ? "s" : ""}</div>
-            <button onClick={openNewNote} className="btn-primary btn-sm">+ Add Note</button>
+            <button onClick={() => { setNoteForm({ title: "", content: "", category: "general" }); setEditNoteId(null); setShowNoteForm(true); }} className="btn-primary btn-sm">
+              + Add Note
+            </button>
           </div>
 
           {showNoteForm && (
@@ -295,14 +264,12 @@ export default function ClientDetailPage() {
                         <div className="text-xs text-ink-400 mt-0.5">{formatDateTime(n.created_at)}</div>
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => openEditNote(n)} className="btn-ghost btn-sm">Edit</button>
+                        <button onClick={() => { setNoteForm({ title: n.title, content: n.content || "", category: n.category }); setEditNoteId(n.id); setShowNoteForm(true); }} className="btn-ghost btn-sm">Edit</button>
                         <button onClick={() => deleteNote(n.id)} className="btn-ghost btn-sm text-red-500">Delete</button>
                       </div>
                     </div>
                     {n.content && (
-                      <div className="text-sm text-ink-700 whitespace-pre-wrap bg-surface-50 rounded-lg p-3 mt-2">
-                        {n.content}
-                      </div>
+                      <div className="text-sm text-ink-700 whitespace-pre-wrap bg-surface-50 rounded-lg p-3 mt-2">{n.content}</div>
                     )}
                   </div>
                 );
@@ -319,8 +286,7 @@ export default function ClientDetailPage() {
             <div className="flex flex-wrap items-end gap-4">
               <div>
                 <label className="label">Category</label>
-                <select className="input-field w-40" value={fileCategory}
-                  onChange={(e) => setFileCategory(e.target.value)}>
+                <select className="input-field w-40" value={fileCategory} onChange={(e) => setFileCategory(e.target.value)}>
                   {FILE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
@@ -361,10 +327,10 @@ export default function ClientDetailPage() {
                 </thead>
                 <tbody>
                   {files.map((f) => {
-                    const icon = f.file_type?.includes("pdf") ? "\uD83D\uDCC4" :
-                      f.file_type?.includes("image") || f.file_type?.includes("png") || f.file_type?.includes("jpg") ? "\uD83D\uDDBC\uFE0F" :
-                      f.file_type?.includes("doc") ? "\uD83D\uDCDD" :
-                      f.file_type?.includes("sheet") || f.file_type?.includes("csv") || f.file_type?.includes("xlsx") ? "\uD83D\uDCCA" : "\uD83D\uDCCE";
+                    const icon = f.file_type?.includes("pdf") ? "📄" :
+                      f.file_type?.includes("image") || ["png","jpg","jpeg"].some(ext => f.file_type?.includes(ext)) ? "🖼️" :
+                      f.file_type?.includes("doc") ? "📝" :
+                      ["sheet","csv","xlsx"].some(t => f.file_type?.includes(t)) ? "📊" : "📎";
                     return (
                       <tr key={f.id} className="table-row">
                         <td className="table-cell">
@@ -376,12 +342,11 @@ export default function ClientDetailPage() {
                         <td className="table-cell">
                           <span className="badge badge-blue">{FILE_CATEGORIES.find((c) => c.value === f.category)?.label || f.category}</span>
                         </td>
-                        <td className="table-cell text-ink-500 text-sm">{f.file_size ? formatSize(f.file_size) : "\u2014"}</td>
+                        <td className="table-cell text-ink-500 text-sm">{f.file_size ? formatSize(f.file_size) : "—"}</td>
                         <td className="table-cell text-ink-500 text-sm">{formatDate(f.created_at)}</td>
-                        <td className="table-cell text-ink-500 text-sm">{f.notes || "\u2014"}</td>
+                        <td className="table-cell text-ink-500 text-sm">{f.notes || "—"}</td>
                         <td className="table-cell text-right">
-                          <a href={getFileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer"
-                            className="btn-ghost btn-sm inline-block">View</a>
+                          <a href={getFileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm inline-block">View</a>
                           <button onClick={() => deleteFile(f)} className="btn-ghost btn-sm text-red-500">Delete</button>
                         </td>
                       </tr>

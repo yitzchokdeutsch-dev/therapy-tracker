@@ -6,8 +6,8 @@ import { usePathname } from "next/navigation";
 const nav = [
   { href: "/", label: "Dashboard", icon: "\u25C9" },
   { href: "/clients", label: "Clients", icon: "\u25CE" },
+  { href: "/scheduling", label: "Scheduling", icon: "\u2630" },
   { href: "/calendar", label: "Calendar", icon: "\u25A6" },
-  { href: "/checkin", label: "Check-In", icon: "\u2713" },
   { href: "/payments", label: "Payments", icon: "$" },
   { href: "/billing", label: "Billing", icon: "\u25E7" },
   { href: "/setup", label: "Setup", icon: "\u2699" },
@@ -44,7 +44,7 @@ export default function Sidebar() {
         })}
       </nav>
       <div className="px-6 py-4 border-t border-surface-200">
-        <div className="text-xs text-ink-400">v0.1.0</div>
+        <div className="text-xs text-ink-400">v0.2.0</div>
       </div>
     </aside>
   );
