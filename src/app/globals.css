@@ -8,6 +8,11 @@
   body { @apply bg-surface-50 text-ink-900 antialiased; }
 }
 
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
 @layer components {
   .btn-primary {
     @apply bg-brand-600 text-white px-5 py-2.5 rounded-lg font-semibold text-sm

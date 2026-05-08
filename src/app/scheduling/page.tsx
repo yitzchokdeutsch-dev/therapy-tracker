@@ -17,6 +17,8 @@ function in3months() {
   return d.toISOString().split("T")[0];
 }
 
+type DayTime = { day: number; time: string };
+
 export default function SchedulingPage() {
   const [mode, setMode] = useState<"recurring" | "onetime">("recurring");
   const [saving, setSaving] = useState(false);
@@ -31,8 +33,7 @@ export default function SchedulingPage() {
 
   const [recForm, setRecForm] = useState({
     client_id: "", therapist_id: "", service_type_id: "",
-    days: [] as number[],
-    time: "10:00",
+    days: [] as DayTime[],
     start_date: todayStr(), end_date: in3months(),
   });
 
@@ -47,26 +48,22 @@ export default function SchedulingPage() {
 
   const getService = (id: string) => serviceTypes.find((s) => s.id === id);
 
-  // All slots available across the union of selected days (for recurring picker)
-  const recSlots = useMemo((): string[] => {
-    if (!recForm.therapist_id || recForm.days.length === 0) return [];
+  const getSlotsForDay = (dayIdx: number): string[] => {
+    if (!recForm.therapist_id) return [];
+    const workSched = schedules.find((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayIdx);
+    if (!workSched) return [];
     const svc = getService(recForm.service_type_id);
     const duration = svc?.duration || 30;
-    const allSlots = new Set<string>();
-    for (const dayIdx of recForm.days) {
-      const workSched = schedules.find((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayIdx);
-      if (!workSched) continue;
-      const workStart = timeToMin(workSched.start_time.slice(0, 5));
-      const workEnd = timeToMin(workSched.end_time.slice(0, 5));
-      for (let t = workStart; t + duration <= workEnd; t += 15) allSlots.add(minToTime(t));
-    }
-    return Array.from(allSlots).sort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recForm.therapist_id, recForm.service_type_id, recForm.days, schedules, serviceTypes]);
+    const workStart = timeToMin(workSched.start_time.slice(0, 5));
+    const workEnd = timeToMin(workSched.end_time.slice(0, 5));
+    const slots: string[] = [];
+    for (let t = workStart; t + duration <= workEnd; t += 15) slots.push(minToTime(t));
+    return slots;
+  };
 
   const sessionPreview = useMemo(() => {
     if (!recForm.start_date || !recForm.end_date || recForm.days.length === 0) return null;
-    const daySet = new Set(recForm.days);
+    const daySet = new Set(recForm.days.map((d) => d.day));
     let count = 0;
     const end = new Date(recForm.end_date + "T12:00:00");
     for (let d = new Date(recForm.start_date + "T12:00:00"); d <= end; d.setDate(d.getDate() + 1)) {
@@ -123,12 +120,13 @@ export default function SchedulingPage() {
   const selectClient = (clientId: string, formType: "rec" | "one") => {
     const client = clients.find((c) => c.id === clientId);
     if (formType === "rec") {
+      const clientDays: DayTime[] = (client?.session_days || []).map((d: number) => ({ day: d, time: "10:00" }));
       setRecForm((prev) => ({
         ...prev,
         client_id: clientId,
         therapist_id: client?.therapist_id || prev.therapist_id,
         service_type_id: client?.service_type_id || prev.service_type_id,
-        days: (client?.session_days || []).length > 0 ? (client?.session_days as number[]) : prev.days,
+        days: clientDays.length > 0 ? clientDays : prev.days,
       }));
     } else {
       const therapistId = client?.therapist_id || oneForm.therapist_id;
@@ -139,16 +137,22 @@ export default function SchedulingPage() {
   };
 
   const toggleRecDay = (dayIdx: number) => {
+    setRecForm((prev) => {
+      const existing = prev.days.find((d) => d.day === dayIdx);
+      if (existing) return { ...prev, days: prev.days.filter((d) => d.day !== dayIdx) };
+      return { ...prev, days: [...prev.days, { day: dayIdx, time: "10:00" }].sort((a, b) => a.day - b.day) };
+    });
+  };
+
+  const setDayTime = (dayIdx: number, time: string) => {
     setRecForm((prev) => ({
       ...prev,
-      days: prev.days.includes(dayIdx)
-        ? prev.days.filter((d) => d !== dayIdx)
-        : [...prev.days, dayIdx].sort((a, b) => a - b),
+      days: prev.days.map((d) => d.day === dayIdx ? { ...d, time } : d),
     }));
   };
 
   const saveRecurring = async () => {
-    if (!recForm.client_id || !recForm.therapist_id || !recForm.service_type_id || recForm.days.length === 0 || !recForm.start_date || !recForm.end_date || !recForm.time) return;
+    if (!recForm.client_id || !recForm.therapist_id || !recForm.service_type_id || recForm.days.length === 0 || !recForm.start_date || !recForm.end_date) return;
     setSaving(true);
     setResult(null);
 
@@ -165,12 +169,12 @@ export default function SchedulingPage() {
 
     const newSessions: any[] = [];
     const skipped: string[] = [];
-    const daySet = new Set(recForm.days);
 
     const end = new Date(recForm.end_date + "T12:00:00");
     for (let d = new Date(recForm.start_date + "T12:00:00"); d <= end; d.setDate(d.getDate() + 1)) {
       const dayOfWeek = d.getDay();
-      if (!daySet.has(dayOfWeek)) continue;
+      const dayConfig = recForm.days.find((dd) => dd.day === dayOfWeek);
+      if (!dayConfig) continue;
 
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       if (existingSet.has(dateStr)) { skipped.push(`${dateStr}: already has session`); continue; }
@@ -178,11 +182,11 @@ export default function SchedulingPage() {
       const workSched = schedules.find((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayOfWeek);
       if (!workSched) { skipped.push(`${dateStr}: therapist off`); continue; }
 
-      const sessionStart = timeToMin(recForm.time);
+      const sessionStart = timeToMin(dayConfig.time);
       const sessionEnd = sessionStart + duration;
       const workStart = timeToMin(workSched.start_time.slice(0, 5));
       const workEnd = timeToMin(workSched.end_time.slice(0, 5));
-      if (sessionStart < workStart || sessionEnd > workEnd) { skipped.push(`${dateStr} at ${formatTime(recForm.time)}: outside work hours`); continue; }
+      if (sessionStart < workStart || sessionEnd > workEnd) { skipped.push(`${dateStr} at ${formatTime(dayConfig.time)}: outside work hours`); continue; }
 
       const conflict = (therapistSessions || []).some((s: Session) => {
         if (s.session_date !== dateStr) return false;
@@ -196,9 +200,9 @@ export default function SchedulingPage() {
         const nsStart = timeToMin(ns.session_time);
         return sessionStart < nsStart + (nsSvc?.duration || 30) && sessionEnd > nsStart;
       });
-      if (conflict || selfConflict) { skipped.push(`${dateStr} at ${formatTime(recForm.time)}: time conflict`); continue; }
+      if (conflict || selfConflict) { skipped.push(`${dateStr} at ${formatTime(dayConfig.time)}: time conflict`); continue; }
 
-      newSessions.push({ client_id: recForm.client_id, therapist_id: recForm.therapist_id, service_type_id: recForm.service_type_id, session_date: dateStr, session_time: recForm.time, status: "scheduled" });
+      newSessions.push({ client_id: recForm.client_id, therapist_id: recForm.therapist_id, service_type_id: recForm.service_type_id, session_date: dateStr, session_time: dayConfig.time, status: "scheduled" });
     }
 
     for (let i = 0; i < newSessions.length; i += 100) {
@@ -328,7 +332,7 @@ export default function SchedulingPage() {
             <label className="label">Days *</label>
             <div className="flex gap-2 flex-wrap">
               {SCHED_DAYS.map((dayIdx) => {
-                const isOn = recForm.days.includes(dayIdx);
+                const isOn = recForm.days.some((d) => d.day === dayIdx);
                 const therapistWorks = !recForm.therapist_id || schedules.some((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayIdx);
                 return (
                   <button
@@ -351,32 +355,41 @@ export default function SchedulingPage() {
           </div>
 
           {recForm.days.length > 0 && (
-            <div>
-              <label className="label">Time *</label>
-              {recSlots.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {recSlots.map((slot) => (
-                    <button
-                      key={slot}
-                      onClick={() => setRecForm({ ...recForm, time: slot })}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
-                        recForm.time === slot
-                          ? "bg-brand-600 text-white border-brand-600"
-                          : "bg-white text-ink-700 border-surface-300 hover:border-brand-300"
-                      }`}
-                    >
-                      {formatTime(slot)}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <input
-                  type="time"
-                  className="input-field w-32 py-1.5 text-sm"
-                  value={recForm.time}
-                  onChange={(e) => setRecForm({ ...recForm, time: e.target.value })}
-                />
-              )}
+            <div className="space-y-3">
+              {recForm.days.map((d) => {
+                const slots = getSlotsForDay(d.day);
+                return (
+                  <div key={d.day} className="flex items-start gap-3">
+                    <span className="text-sm font-semibold text-ink-600 w-8 pt-2 flex-shrink-0">{DAYS[d.day]}</span>
+                    <div className="flex-1 min-w-0">
+                      {slots.length > 0 ? (
+                        <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                          {slots.map((slot) => (
+                            <button
+                              key={slot}
+                              onClick={() => setDayTime(d.day, slot)}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all flex-shrink-0 ${
+                                d.time === slot
+                                  ? "bg-brand-600 text-white border-brand-600"
+                                  : "bg-white text-ink-700 border-surface-300 hover:border-brand-300"
+                              }`}
+                            >
+                              {formatTime(slot)}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <input
+                          type="time"
+                          className="input-field w-32 py-1.5 text-sm"
+                          value={d.time}
+                          onChange={(e) => setDayTime(d.day, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -463,12 +476,12 @@ export default function SchedulingPage() {
             ) : oneForm.therapist_id && oneForm.date && oneForm.service_type_id ? (
               availableSlots.length > 0 ? (
                 <div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar mb-2">
                     {availableSlots.map((slot) => (
                       <button
                         key={slot}
                         onClick={() => setOneForm({ ...oneForm, time: slot })}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all flex-shrink-0 ${
                           oneForm.time === slot
                             ? "bg-brand-600 text-white border-brand-600"
                             : "bg-white text-ink-700 border-surface-300 hover:border-brand-300"
