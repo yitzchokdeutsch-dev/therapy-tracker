@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import AppShell from "@/components/AppShell";
 import Providers from "@/components/Providers";
 import SessionGuard from "@/components/SessionGuard";
 import { createClient } from "@/lib/supabase/server";
@@ -20,12 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Providers>
           {user ? (
             <SessionGuard>
-              <div className="flex min-h-screen">
-                <Sidebar userEmail={user.email ?? ""} />
-                <main className="flex-1 ml-64">
-                  <div className="max-w-6xl mx-auto px-6 py-8">{children}</div>
-                </main>
-              </div>
+              <AppShell userEmail={user.email ?? ""}>{children}</AppShell>
             </SessionGuard>
           ) : (
             <>{children}</>

@@ -136,11 +136,11 @@ export default function CheckInPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
         <button onClick={() => changeDate(-1)} className="btn-ghost btn-sm">&larr;</button>
-        <div className="flex items-center gap-3">
-          <input type="date" className="input-field w-40 py-1.5 text-sm" value={date} onChange={(e) => setDate(e.target.value)} />
-          <span className="font-semibold">{displayDate}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input type="date" className="input-field w-36 py-1.5 text-sm" value={date} onChange={(e) => setDate(e.target.value)} />
+          <span className="font-semibold text-sm">{displayDate}</span>
           {isToday && <span className="badge badge-blue">Today</span>}
         </div>
         <button onClick={() => changeDate(1)} className="btn-ghost btn-sm">&rarr;</button>
@@ -226,7 +226,7 @@ export default function CheckInPage() {
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-1.5">
                           {STATUS_OPTIONS.map((opt) => {
                             const isActive = s.status === opt.value;
                             return (
@@ -234,7 +234,7 @@ export default function CheckInPage() {
                                 key={opt.value}
                                 onClick={() => handleStatusUpdate(s, opt.value)}
                                 disabled={isProcessing}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isActive ? opt.btnClass : "bg-white text-ink-500 border-surface-300 hover:border-ink-300"}`}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isActive ? opt.btnClass : "bg-white text-ink-500 border-surface-300 hover:border-ink-300"}`}
                               >
                                 <span className="mr-1">{opt.icon}</span>{opt.label}
                               </button>

@@ -131,9 +131,9 @@ export default function CalendarPage() {
         <button onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDay(todayDate); }} className="btn-outline btn-sm ml-2">Today</button>
       </div>
 
-      <div className="flex gap-4">
-        <div className="flex-1">
-          <div className="card overflow-hidden">
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="card overflow-hidden overflow-x-auto">
             <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
               <thead>
                 <tr>{DAY_HEADERS.map((d) => <th key={d} className="text-xs font-semibold text-ink-500 uppercase py-2.5 text-center border-b border-surface-200 bg-surface-50">{d}</th>)}</tr>
@@ -180,7 +180,7 @@ export default function CalendarPage() {
         </div>
 
         {selectedDay && (
-          <div className="w-96 flex-shrink-0">
+          <div className="w-full lg:w-96 lg:flex-shrink-0">
             <div className="card sticky top-4">
               <div className="px-4 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
                 <div>

@@ -240,6 +240,7 @@ function ServicesTab() {
         <div className="card p-12 text-center text-ink-400">No service types yet.</div>
       ) : (
         <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead><tr className="border-b border-surface-200">
               <th className="table-header">Service</th><th className="table-header">Duration</th><th className="table-header">Default Rate</th><th className="table-header">Status</th><th className="table-header text-right">Actions</th>
@@ -258,6 +259,7 @@ function ServicesTab() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

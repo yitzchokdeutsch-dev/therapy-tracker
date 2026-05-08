@@ -184,6 +184,7 @@ export default function PaymentsPage() {
             <div className="card p-10 text-center text-ink-400">No payments found for this period.</div>
           ) : (
             <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-surface-200">
@@ -220,6 +221,7 @@ export default function PaymentsPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>

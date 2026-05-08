@@ -219,7 +219,7 @@ export default function ClientsPage() {
 
           <div className="mb-4">
             <label className="label">Session Days</label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {DAYS.map((day, i) => (
                 <button key={i} onClick={() => toggleDay(i)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
@@ -255,6 +255,7 @@ export default function ClientsPage() {
         </div>
       ) : (
         <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200">
@@ -314,6 +315,7 @@ export default function ClientsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
