@@ -31,7 +31,8 @@ export default function SchedulingPage() {
 
   const [recForm, setRecForm] = useState({
     client_id: "", therapist_id: "", service_type_id: "",
-    days: [] as { day: number; time: string }[],
+    days: [] as number[],
+    time: "10:00",
     start_date: todayStr(), end_date: in3months(),
   });
 
@@ -46,9 +47,26 @@ export default function SchedulingPage() {
 
   const getService = (id: string) => serviceTypes.find((s) => s.id === id);
 
+  // All slots available across the union of selected days (for recurring picker)
+  const recSlots = useMemo((): string[] => {
+    if (!recForm.therapist_id || recForm.days.length === 0) return [];
+    const svc = getService(recForm.service_type_id);
+    const duration = svc?.duration || 30;
+    const allSlots = new Set<string>();
+    for (const dayIdx of recForm.days) {
+      const workSched = schedules.find((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayIdx);
+      if (!workSched) continue;
+      const workStart = timeToMin(workSched.start_time.slice(0, 5));
+      const workEnd = timeToMin(workSched.end_time.slice(0, 5));
+      for (let t = workStart; t + duration <= workEnd; t += 15) allSlots.add(minToTime(t));
+    }
+    return Array.from(allSlots).sort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recForm.therapist_id, recForm.service_type_id, recForm.days, schedules, serviceTypes]);
+
   const sessionPreview = useMemo(() => {
     if (!recForm.start_date || !recForm.end_date || recForm.days.length === 0) return null;
-    const daySet = new Set(recForm.days.map((d) => d.day));
+    const daySet = new Set(recForm.days);
     let count = 0;
     const end = new Date(recForm.end_date + "T12:00:00");
     for (let d = new Date(recForm.start_date + "T12:00:00"); d <= end; d.setDate(d.getDate() + 1)) {
@@ -105,13 +123,12 @@ export default function SchedulingPage() {
   const selectClient = (clientId: string, formType: "rec" | "one") => {
     const client = clients.find((c) => c.id === clientId);
     if (formType === "rec") {
-      const clientDays = (client?.session_days || []).map((d: number) => ({ day: d, time: "10:00" }));
       setRecForm((prev) => ({
         ...prev,
         client_id: clientId,
         therapist_id: client?.therapist_id || prev.therapist_id,
         service_type_id: client?.service_type_id || prev.service_type_id,
-        days: clientDays.length > 0 ? clientDays : prev.days,
+        days: (client?.session_days || []).length > 0 ? (client?.session_days as number[]) : prev.days,
       }));
     } else {
       const therapistId = client?.therapist_id || oneForm.therapist_id;
@@ -122,19 +139,16 @@ export default function SchedulingPage() {
   };
 
   const toggleRecDay = (dayIdx: number) => {
-    setRecForm((prev) => {
-      const existing = prev.days.find((d) => d.day === dayIdx);
-      if (existing) return { ...prev, days: prev.days.filter((d) => d.day !== dayIdx) };
-      return { ...prev, days: [...prev.days, { day: dayIdx, time: "10:00" }].sort((a, b) => a.day - b.day) };
-    });
-  };
-
-  const updateRecDayTime = (dayIdx: number, time: string) => {
-    setRecForm((prev) => ({ ...prev, days: prev.days.map((d) => d.day === dayIdx ? { ...d, time } : d) }));
+    setRecForm((prev) => ({
+      ...prev,
+      days: prev.days.includes(dayIdx)
+        ? prev.days.filter((d) => d !== dayIdx)
+        : [...prev.days, dayIdx].sort((a, b) => a - b),
+    }));
   };
 
   const saveRecurring = async () => {
-    if (!recForm.client_id || !recForm.therapist_id || !recForm.service_type_id || recForm.days.length === 0 || !recForm.start_date || !recForm.end_date) return;
+    if (!recForm.client_id || !recForm.therapist_id || !recForm.service_type_id || recForm.days.length === 0 || !recForm.start_date || !recForm.end_date || !recForm.time) return;
     setSaving(true);
     setResult(null);
 
@@ -151,12 +165,12 @@ export default function SchedulingPage() {
 
     const newSessions: any[] = [];
     const skipped: string[] = [];
+    const daySet = new Set(recForm.days);
 
     const end = new Date(recForm.end_date + "T12:00:00");
     for (let d = new Date(recForm.start_date + "T12:00:00"); d <= end; d.setDate(d.getDate() + 1)) {
       const dayOfWeek = d.getDay();
-      const dayConfig = recForm.days.find((dd) => dd.day === dayOfWeek);
-      if (!dayConfig) continue;
+      if (!daySet.has(dayOfWeek)) continue;
 
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       if (existingSet.has(dateStr)) { skipped.push(`${dateStr}: already has session`); continue; }
@@ -164,11 +178,11 @@ export default function SchedulingPage() {
       const workSched = schedules.find((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayOfWeek);
       if (!workSched) { skipped.push(`${dateStr}: therapist off`); continue; }
 
-      const sessionStart = timeToMin(dayConfig.time);
+      const sessionStart = timeToMin(recForm.time);
       const sessionEnd = sessionStart + duration;
       const workStart = timeToMin(workSched.start_time.slice(0, 5));
       const workEnd = timeToMin(workSched.end_time.slice(0, 5));
-      if (sessionStart < workStart || sessionEnd > workEnd) { skipped.push(`${dateStr} at ${formatTime(dayConfig.time)}: outside work hours`); continue; }
+      if (sessionStart < workStart || sessionEnd > workEnd) { skipped.push(`${dateStr} at ${formatTime(recForm.time)}: outside work hours`); continue; }
 
       const conflict = (therapistSessions || []).some((s: Session) => {
         if (s.session_date !== dateStr) return false;
@@ -176,17 +190,15 @@ export default function SchedulingPage() {
         const sStart = timeToMin(s.session_time || "10:00");
         return sessionStart < sStart + (sSvc?.duration || 30) && sessionEnd > sStart;
       });
-
       const selfConflict = newSessions.some((ns) => {
         if (ns.session_date !== dateStr) return false;
         const nsSvc = getService(ns.service_type_id);
         const nsStart = timeToMin(ns.session_time);
         return sessionStart < nsStart + (nsSvc?.duration || 30) && sessionEnd > nsStart;
       });
+      if (conflict || selfConflict) { skipped.push(`${dateStr} at ${formatTime(recForm.time)}: time conflict`); continue; }
 
-      if (conflict || selfConflict) { skipped.push(`${dateStr} at ${formatTime(dayConfig.time)}: time conflict`); continue; }
-
-      newSessions.push({ client_id: recForm.client_id, therapist_id: recForm.therapist_id, service_type_id: recForm.service_type_id, session_date: dateStr, session_time: dayConfig.time, status: "scheduled" });
+      newSessions.push({ client_id: recForm.client_id, therapist_id: recForm.therapist_id, service_type_id: recForm.service_type_id, session_date: dateStr, session_time: recForm.time, status: "scheduled" });
     }
 
     for (let i = 0; i < newSessions.length; i += 100) {
@@ -313,10 +325,10 @@ export default function SchedulingPage() {
           </div>
 
           <div>
-            <label className="label">Days & Times *</label>
-            <div className="flex gap-2 flex-wrap mb-3">
+            <label className="label">Days *</label>
+            <div className="flex gap-2 flex-wrap">
               {SCHED_DAYS.map((dayIdx) => {
-                const isOn = recForm.days.some((d) => d.day === dayIdx);
+                const isOn = recForm.days.includes(dayIdx);
                 const therapistWorks = !recForm.therapist_id || schedules.some((s) => s.therapist_id === recForm.therapist_id && s.day_of_week === dayIdx);
                 return (
                   <button
@@ -336,23 +348,37 @@ export default function SchedulingPage() {
                 );
               })}
             </div>
-
-            {recForm.days.length > 0 && (
-              <div className="flex flex-wrap gap-x-4 gap-y-2 pl-1">
-                {recForm.days.map((d) => (
-                  <div key={d.day} className="flex items-center gap-2">
-                    <span className="text-sm text-ink-500 w-7">{DAYS[d.day]}</span>
-                    <input
-                      type="time"
-                      className="input-field w-28 py-1 text-sm"
-                      value={d.time}
-                      onChange={(e) => updateRecDayTime(d.day, e.target.value)}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
+
+          {recForm.days.length > 0 && (
+            <div>
+              <label className="label">Time *</label>
+              {recSlots.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {recSlots.map((slot) => (
+                    <button
+                      key={slot}
+                      onClick={() => setRecForm({ ...recForm, time: slot })}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+                        recForm.time === slot
+                          ? "bg-brand-600 text-white border-brand-600"
+                          : "bg-white text-ink-700 border-surface-300 hover:border-brand-300"
+                      }`}
+                    >
+                      {formatTime(slot)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <input
+                  type="time"
+                  className="input-field w-32 py-1.5 text-sm"
+                  value={recForm.time}
+                  onChange={(e) => setRecForm({ ...recForm, time: e.target.value })}
+                />
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
