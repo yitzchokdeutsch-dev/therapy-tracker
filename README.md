@@ -411,7 +411,6 @@ When ready to go live:
 | Issue | Location | Fix |
 |---|---|---|
 | Billing month-end uses `-31` | `billing/page.tsx` | Months with < 31 days may miss charges. Use actual last-day-of-month calculation |
-| Scheduling ignores Saturday | `scheduling/page.tsx` | `DAYS` array is Sun–Fri only. If a therapist works Saturdays, sessions cannot be scheduled |
 | No end-date validation in scheduler | `scheduling/page.tsx` | End before start runs silently with 0 results and no error message |
 | CSV import has no undo | `clients/page.tsx` | A bad import is permanent. Add a rollback or dry-run mode |
 | Payments list flashes on month change | `payments/page.tsx` | Previous data clears before new data loads. Add `placeholderData: keepPreviousData` to `usePaymentsForMonth` |

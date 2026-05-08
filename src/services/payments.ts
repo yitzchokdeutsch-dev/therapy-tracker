@@ -1,4 +1,5 @@
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
+const supabase = createClient();
 import type { PaymentCreateInput } from "@/lib/schemas";
 
 export async function dbRecordPayment(data: PaymentCreateInput) {

@@ -1,6 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+// Re-exports the browser Supabase client.
+// All existing imports of "@/lib/supabase" continue to work unchanged.
+// Server actions and middleware import from "@/lib/supabase/server" or
+// "@/lib/supabase/middleware" directly.
+export { createClient as createBrowserClient } from "./supabase/browser";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { createClient } from "./supabase/browser";
+export const supabase = createClient();
