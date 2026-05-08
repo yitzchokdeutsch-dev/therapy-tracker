@@ -47,13 +47,11 @@ export default function ClientDetailPage() {
 
   const [tab, setTab] = useState<"notes" | "files">("notes");
 
-  // Note form
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [editNoteId, setEditNoteId] = useState<string | null>(null);
   const [noteForm, setNoteForm] = useState({ title: "", content: "", category: "general" });
   const [savingNote, setSavingNote] = useState(false);
 
-  // File upload
   const [uploading, setUploading] = useState(false);
   const [fileCategory, setFileCategory] = useState("evaluation");
   const [fileNote, setFileNote] = useState("");
@@ -63,32 +61,32 @@ export default function ClientDetailPage() {
     if (!c) { setLoading(false); return; }
     setClient(c);
 
-    const promises: Promise<any>[] = [
-      supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
-      supabase.from("client_files").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
-      supabase.from("charges").select("amount").eq("client_id", clientId),
-      supabase.from("payments").select("amount").eq("client_id", clientId),
-    ];
-    if (c.therapist_id) promises.push(supabase.from("therapists").select("*").eq("id", c.therapist_id).single());
-    if (c.service_type_id) promises.push(supabase.from("service_types").select("*").eq("id", c.service_type_id).single());
+    const notesRes = await supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false });
+    setNotes(notesRes.data || []);
 
-    const results = await Promise.all(promises);
-    setNotes(results[0].data || []);
-    setFiles(results[1].data || []);
+    const filesRes = await supabase.from("client_files").select("*").eq("client_id", clientId).order("created_at", { ascending: false });
+    setFiles(filesRes.data || []);
 
-    const totalCharges = (results[2].data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-    const totalPayments = (results[3].data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+    const chargesRes = await supabase.from("charges").select("amount").eq("client_id", clientId);
+    const paymentsRes = await supabase.from("payments").select("amount").eq("client_id", clientId);
+    const totalCharges = (chargesRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+    const totalPayments = (paymentsRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
     setBalance(totalCharges - totalPayments);
 
-    if (c.therapist_id && results[4]) setTherapist(results[4].data);
-    if (c.service_type_id) setServiceType(results[c.therapist_id ? 5 : 4]?.data);
+    if (c.therapist_id) {
+      const tRes = await supabase.from("therapists").select("*").eq("id", c.therapist_id).single();
+      setTherapist(tRes.data);
+    }
+    if (c.service_type_id) {
+      const sRes = await supabase.from("service_types").select("*").eq("id", c.service_type_id).single();
+      setServiceType(sRes.data);
+    }
 
     setLoading(false);
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Notes CRUD ──
   const openNewNote = () => {
     setNoteForm({ title: "", content: "", category: "general" });
     setEditNoteId(null);
@@ -124,18 +122,13 @@ export default function ClientDetailPage() {
     load();
   };
 
-  // ── File Upload ──
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
 
-    const ext = file.name.split(".").pop();
     const path = `${clientId}/${Date.now()}-${file.name}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("client-files")
-      .upload(path, file);
+    const { error: uploadError } = await supabase.storage.from("client-files").upload(path, file);
 
     if (uploadError) {
       alert("Upload failed: " + uploadError.message);
@@ -146,7 +139,7 @@ export default function ClientDetailPage() {
     await supabase.from("client_files").insert({
       client_id: clientId,
       file_name: file.name,
-      file_type: file.type || ext,
+      file_type: file.type || file.name.split(".").pop(),
       file_size: file.size,
       storage_path: path,
       category: fileCategory,
@@ -180,7 +173,6 @@ export default function ClientDetailPage() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const formatDateTime = (d: string) => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   const fmt = (n: number) => "$" + Math.abs(n).toFixed(2);
-
   const getCatBadge = (cat: string) => NOTE_CATEGORIES.find((c) => c.value === cat) || NOTE_CATEGORIES[5];
 
   if (loading) return <div className="text-ink-400 py-12 text-center">Loading...</div>;
@@ -188,10 +180,8 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      {/* Back button */}
       <button onClick={() => router.push("/clients")} className="btn-ghost btn-sm mb-4">&larr; Back to Clients</button>
 
-      {/* Header */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold">{client.first_name} {client.last_name}</h1>
@@ -210,7 +200,6 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Info Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Therapist</div>
@@ -240,7 +229,6 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Tabs: Notes & Files */}
       <div className="flex gap-1 bg-surface-100 rounded-lg p-1 w-fit mb-4">
         <button onClick={() => setTab("notes")}
           className={`px-5 py-2 rounded-md text-sm font-semibold transition-all ${tab === "notes" ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
@@ -252,7 +240,6 @@ export default function ClientDetailPage() {
         </button>
       </div>
 
-      {/* ── NOTES TAB ── */}
       {tab === "notes" && (
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -260,7 +247,6 @@ export default function ClientDetailPage() {
             <button onClick={openNewNote} className="btn-primary btn-sm">+ Add Note</button>
           </div>
 
-          {/* Note Form */}
           {showNoteForm && (
             <div className="card p-5 mb-4">
               <h3 className="font-semibold mb-4">{editNoteId ? "Edit" : "New"} Note</h3>
@@ -292,7 +278,6 @@ export default function ClientDetailPage() {
             </div>
           )}
 
-          {/* Notes List */}
           {notes.length === 0 ? (
             <div className="card p-10 text-center text-ink-400">No notes yet. Add your first note above.</div>
           ) : (
@@ -327,10 +312,8 @@ export default function ClientDetailPage() {
         </div>
       )}
 
-      {/* ── FILES TAB ── */}
       {tab === "files" && (
         <div>
-          {/* Upload Area */}
           <div className="card p-5 mb-4">
             <h3 className="font-semibold mb-3">Upload File</h3>
             <div className="flex flex-wrap items-end gap-4">
@@ -354,12 +337,9 @@ export default function ClientDetailPage() {
                 </label>
               </div>
             </div>
-            <div className="text-xs text-ink-400 mt-2">
-              Accepted: PDF, Word, Images, Excel, CSV, Text
-            </div>
+            <div className="text-xs text-ink-400 mt-2">Accepted: PDF, Word, Images, Excel, CSV, Text</div>
           </div>
 
-          {/* Files List */}
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-ink-500">{files.length} file{files.length !== 1 ? "s" : ""}</div>
           </div>
@@ -381,10 +361,10 @@ export default function ClientDetailPage() {
                 </thead>
                 <tbody>
                   {files.map((f) => {
-                    const icon = f.file_type?.includes("pdf") ? "📄" :
-                      f.file_type?.includes("image") || f.file_type?.includes("png") || f.file_type?.includes("jpg") ? "🖼️" :
-                      f.file_type?.includes("doc") ? "📝" :
-                      f.file_type?.includes("sheet") || f.file_type?.includes("csv") || f.file_type?.includes("xlsx") ? "📊" : "📎";
+                    const icon = f.file_type?.includes("pdf") ? "\uD83D\uDCC4" :
+                      f.file_type?.includes("image") || f.file_type?.includes("png") || f.file_type?.includes("jpg") ? "\uD83D\uDDBC\uFE0F" :
+                      f.file_type?.includes("doc") ? "\uD83D\uDCDD" :
+                      f.file_type?.includes("sheet") || f.file_type?.includes("csv") || f.file_type?.includes("xlsx") ? "\uD83D\uDCCA" : "\uD83D\uDCCE";
                     return (
                       <tr key={f.id} className="table-row">
                         <td className="table-cell">
