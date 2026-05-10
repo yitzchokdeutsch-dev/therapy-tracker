@@ -8,16 +8,22 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data: row } = await supabase
+  const { data: row, error: rowErr } = await supabase
     .from("user_roles").select("role").eq("user_id", user.id).single();
 
   if (row?.role === "admin") return user;
 
+  // If the table doesn't exist yet, allow access (migration not run)
+  if (rowErr?.code === "42P01") return user; // 42P01 = undefined_table
+
   // Allow access when no roles have been configured yet (initial setup)
-  const admin = createAdminClient();
-  const { count } = await admin
-    .from("user_roles").select("*", { count: "exact", head: true });
-  if (count === 0) return user;
+  // Only possible if service role key is available
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createAdminClient();
+    const { count } = await admin
+      .from("user_roles").select("*", { count: "exact", head: true });
+    if (count === 0) return user;
+  }
 
   throw new Error("Admin access required");
 }
@@ -32,6 +38,9 @@ export type UserRow = {
 
 export async function listUsers(): Promise<UserRow[]> {
   await requireAdmin();
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set. Add it to your Vercel environment variables.");
+  }
   const admin = createAdminClient();
 
   const [{ data: authData }, { data: roles }] = await Promise.all([
