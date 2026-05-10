@@ -99,3 +99,5 @@ export const ROLE_COLORS: Record<Role, string> = {
   billing:   "bg-amber-100 text-amber-700",
   readonly:  "bg-surface-200 text-ink-500",
 };
+
+export const ALL_ROLES = Object.keys(ROLE_LABELS) as Role[];

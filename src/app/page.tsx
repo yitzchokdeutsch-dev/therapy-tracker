@@ -33,8 +33,8 @@ export default function DashboardPage() {
     queryKey: ["monthly_stats", monthStart],
     queryFn: async () => {
       const [{ data: charges }, { data: payments }] = await Promise.all([
-        supabase.from("charges").select("amount").gte("charge_date", monthStart).lte("charge_date", date),
-        supabase.from("payments").select("amount").gte("payment_date", monthStart).lte("payment_date", date),
+        supabase.from("charges").select("amount").gte("charge_date", monthStart).lte("charge_date", date).is("deleted_at", null),
+        supabase.from("payments").select("amount").gte("payment_date", monthStart).lte("payment_date", date).is("deleted_at", null),
       ]);
       return {
         monthCharges: (charges ?? []).reduce((s, r: { amount: number }) => s + Number(r.amount), 0),

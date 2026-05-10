@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type {
   Client, Therapist, ServiceType, Fee,
@@ -87,8 +87,8 @@ export function useBalances() {
 
       if (error) {
         const [{ data: charges }, { data: payments }] = await Promise.all([
-          supabase.from("charges").select("client_id, amount"),
-          supabase.from("payments").select("client_id, amount"),
+          supabase.from("charges").select("client_id, amount").is("deleted_at", null),
+          supabase.from("payments").select("client_id, amount").is("deleted_at", null),
         ]);
         const bals: Record<string, number> = {};
         (charges ?? []).forEach((c: Pick<Charge, "client_id" | "amount">) => {
@@ -157,17 +157,20 @@ export function useSchedules() {
 }
 
 export function usePaymentsForMonth(filterMonth: string) {
+  const [y, m] = filterMonth.split("-").map(Number);
+  const monthEnd = `${filterMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
   return useQuery<Payment[]>({
     queryKey: ["payments", filterMonth],
     queryFn: async () => {
       const { data } = await supabase
         .from("payments").select("*")
         .gte("payment_date", filterMonth + "-01")
-        .lte("payment_date", filterMonth + "-31")
+        .lte("payment_date", monthEnd)
         .is("deleted_at", null)
         .order("payment_date", { ascending: false });
       return (data ?? []) as Payment[];
     },
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }

@@ -20,11 +20,13 @@ export default function BillingPage() {
 
   const loadBilling = useCallback(async () => {
     setLoadingBilling(true);
+    const [y, m] = billingMonth.split("-").map(Number);
+    const monthEnd = `${billingMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
     const [chRes, pRes, achRes, apRes] = await Promise.all([
-      supabase.from("charges").select("*").gte("charge_date", billingMonth + "-01").lte("charge_date", billingMonth + "-31").order("charge_date"),
-      supabase.from("payments").select("*").gte("payment_date", billingMonth + "-01").lte("payment_date", billingMonth + "-31").order("payment_date"),
-      supabase.from("charges").select("*").lt("charge_date", billingMonth + "-01").order("charge_date"),
-      supabase.from("payments").select("*").lt("payment_date", billingMonth + "-01").order("payment_date"),
+      supabase.from("charges").select("*").gte("charge_date", billingMonth + "-01").lte("charge_date", monthEnd).is("deleted_at", null).order("charge_date"),
+      supabase.from("payments").select("*").gte("payment_date", billingMonth + "-01").lte("payment_date", monthEnd).is("deleted_at", null).order("payment_date"),
+      supabase.from("charges").select("*").lt("charge_date", billingMonth + "-01").is("deleted_at", null).order("charge_date"),
+      supabase.from("payments").select("*").lt("payment_date", billingMonth + "-01").is("deleted_at", null).order("payment_date"),
     ]);
     setCharges(chRes.data || []);
     setPayments(pRes.data || []);
@@ -130,7 +132,7 @@ export default function BillingPage() {
                   <div className="text-right">
                     <div className="text-xs text-ink-400 uppercase font-semibold">Amount Due</div>
                     <div className={`text-3xl font-bold ${newBal > 0 ? "text-red-600" : newBal < 0 ? "text-emerald-600" : "text-ink-500"}`}>
-                      {newBal > 0 ? fmt(newBal) : newBal < 0 ? `-${fmt(newBal)}` : "$0.00"}
+                      {newBal > 0 ? fmt(newBal) : newBal < 0 ? `Credit: ${fmt(newBal)}` : "$0.00"}
                     </div>
                   </div>
                 </div>
@@ -140,7 +142,7 @@ export default function BillingPage() {
                 {prevBal !== 0 && (
                   <div className="flex justify-between py-2 px-3 bg-surface-50 rounded-lg mb-4 text-sm">
                     <span>Previous Balance</span>
-                    <span className="font-bold">{prevBal > 0 ? fmt(prevBal) : `-${fmt(prevBal)}`}</span>
+                    <span className="font-bold">{prevBal > 0 ? fmt(prevBal) : `Credit: ${fmt(prevBal)}`}</span>
                   </div>
                 )}
 
@@ -179,7 +181,7 @@ export default function BillingPage() {
 
                 <div className={`flex justify-between py-3 px-4 rounded-lg text-lg font-bold ${newBal > 0 ? "bg-red-50 text-red-700" : newBal < 0 ? "bg-emerald-50 text-emerald-700" : "bg-surface-100 text-ink-500"}`}>
                   <span>{newBal > 0 ? "Balance Due" : newBal < 0 ? "Credit Balance" : "Paid in Full"}</span>
-                  <span>{newBal !== 0 ? (newBal > 0 ? fmt(newBal) : `-${fmt(newBal)}`) : "$0.00"}</span>
+                  <span>{newBal !== 0 ? (newBal > 0 ? fmt(newBal) : `Credit: ${fmt(newBal)}`) : "$0.00"}</span>
                 </div>
               </div>
             </div>

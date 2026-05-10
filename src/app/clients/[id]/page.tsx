@@ -197,7 +197,7 @@ export default function ClientDetailPage() {
           <div className="text-right">
             <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Balance</div>
             <div className={`text-3xl font-bold ${balance > 0 ? "text-red-600" : balance < 0 ? "text-emerald-600" : "text-ink-500"}`}>
-              {balance > 0 ? fmt(balance) : balance < 0 ? `-${fmt(balance)}` : "$0.00"}
+              {balance > 0 ? fmt(balance) : balance < 0 ? `Credit: ${fmt(balance)}` : "$0.00"}
             </div>
           </div>
         )}

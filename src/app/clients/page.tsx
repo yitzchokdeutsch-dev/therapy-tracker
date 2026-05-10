@@ -305,7 +305,7 @@ export default function ClientsPage() {
                     {!isTherapist && (
                       <td className="table-cell text-right">
                         <span className={`font-bold ${bal > 0 ? "text-red-600" : bal < 0 ? "text-emerald-600" : "text-ink-500"}`}>
-                          {bal > 0 ? fmt(bal) : bal < 0 ? `-${fmt(bal)}` : "$0.00"}
+                          {bal > 0 ? fmt(bal) : bal < 0 ? `Credit: ${fmt(bal)}` : "$0.00"}
                         </span>
                       </td>
                     )}

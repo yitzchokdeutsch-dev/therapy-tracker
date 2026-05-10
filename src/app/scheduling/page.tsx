@@ -153,6 +153,10 @@ export default function SchedulingPage() {
 
   const saveRecurring = async () => {
     if (!recForm.client_id || !recForm.therapist_id || !recForm.service_type_id || recForm.days.length === 0 || !recForm.start_date || !recForm.end_date) return;
+    if (recForm.end_date < recForm.start_date) {
+      setResult({ created: 0, skipped: ["End date must be after start date."] });
+      return;
+    }
     setSaving(true);
     setResult(null);
 
