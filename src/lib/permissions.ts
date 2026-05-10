@@ -1,4 +1,4 @@
-export type Role = "admin" | "therapist" | "billing" | "readonly";
+export type Role = "admin" | "secretary" | "therapist" | "billing" | "readonly";
 
 export interface UserContext {
   role: Role;
@@ -15,6 +15,15 @@ const RULES = {
     canRecordPayments: true,
     canExportData: true,
   },
+  secretary: {
+    canEditClients: true,
+    canDeleteSessions: true,
+    canManageBilling: true,
+    canManageSetup: false,
+    canViewAllTherapists: true,
+    canRecordPayments: true,
+    canExportData: true,
+  },
   billing: {
     canEditClients: false,
     canDeleteSessions: false,
@@ -25,8 +34,8 @@ const RULES = {
     canExportData: true,
   },
   therapist: {
-    canEditClients: true,
-    canDeleteSessions: true,
+    canEditClients: false,
+    canDeleteSessions: false,
     canManageBilling: false,
     canManageSetup: false,
     canViewAllTherapists: false,
@@ -55,18 +64,17 @@ export function visibleTherapistIds(user: UserContext, allIds: string[]): string
   return allIds;
 }
 
-// Which roles can visit each route prefix
 export const PAGE_ACCESS: Record<string, Role[]> = {
-  "/":           ["admin", "therapist", "billing", "readonly"],
-  "/clients":    ["admin", "therapist", "billing", "readonly"],
-  "/scheduling": ["admin", "therapist"],
-  "/checkin":    ["admin", "therapist"],
-  "/calendar":   ["admin", "therapist", "billing", "readonly"],
-  "/payments":   ["admin", "billing"],
-  "/billing":    ["admin", "billing"],
+  "/":           ["admin", "secretary", "therapist", "billing", "readonly"],
+  "/clients":    ["admin", "secretary", "therapist", "billing", "readonly"],
+  "/scheduling": ["admin", "secretary"],
+  "/checkin":    ["admin", "secretary"],
+  "/calendar":   ["admin", "secretary", "therapist", "billing", "readonly"],
+  "/payments":   ["admin", "secretary", "billing"],
+  "/billing":    ["admin", "secretary", "billing"],
   "/setup":      ["admin"],
   "/admin":      ["admin"],
-  "/account":    ["admin", "therapist", "billing", "readonly"],
+  "/account":    ["admin", "secretary", "therapist", "billing", "readonly"],
 };
 
 export function canAccessPage(role: Role, pathname: string): boolean {
@@ -78,6 +86,7 @@ export function canAccessPage(role: Role, pathname: string): boolean {
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin:     "Admin",
+  secretary: "Secretary",
   therapist: "Therapist",
   billing:   "Billing",
   readonly:  "Read Only",
@@ -85,7 +94,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_COLORS: Record<Role, string> = {
   admin:     "bg-brand-100 text-brand-700",
+  secretary: "bg-purple-100 text-purple-700",
   therapist: "bg-emerald-100 text-emerald-700",
-  billing:   "bg-purple-100 text-purple-700",
+  billing:   "bg-amber-100 text-amber-700",
   readonly:  "bg-surface-200 text-ink-500",
 };

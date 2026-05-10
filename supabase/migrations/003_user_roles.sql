@@ -2,7 +2,7 @@
 create table if not exists user_roles (
   user_id    uuid primary key references auth.users on delete cascade,
   role       text not null default 'readonly'
-               check (role in ('admin', 'therapist', 'billing', 'readonly')),
+               check (role in ('admin', 'secretary', 'therapist', 'billing', 'readonly')),
   therapist_id uuid references therapists on delete set null,
   created_at timestamptz default now(),
   updated_at timestamptz default now()

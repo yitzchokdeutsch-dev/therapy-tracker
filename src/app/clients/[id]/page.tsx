@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
+import { useUser } from "@/lib/user-context";
 import type { Client, Therapist, ServiceType, ClientNote, ClientFile } from "@/lib/types";
 
 const NOTE_CATEGORIES = [
@@ -27,6 +28,8 @@ const FILE_CATEGORIES = [
 export default function ClientDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { role } = useUser();
+  const isTherapist = role === "therapist";
   const clientId = params.id as string;
 
   const [client, setClient] = useState<Client | null>(null);
@@ -161,12 +164,14 @@ export default function ClientDetailPage() {
           </div>
           {client.address && <div className="text-sm text-ink-400 mt-0.5">{client.address}</div>}
         </div>
-        <div className="text-right">
-          <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Balance</div>
-          <div className={`text-3xl font-bold ${balance > 0 ? "text-red-600" : balance < 0 ? "text-emerald-600" : "text-ink-500"}`}>
-            {balance > 0 ? fmt(balance) : balance < 0 ? `-${fmt(balance)}` : "$0.00"}
+        {!isTherapist && (
+          <div className="text-right">
+            <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Balance</div>
+            <div className={`text-3xl font-bold ${balance > 0 ? "text-red-600" : balance < 0 ? "text-emerald-600" : "text-ink-500"}`}>
+              {balance > 0 ? fmt(balance) : balance < 0 ? `-${fmt(balance)}` : "$0.00"}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -182,7 +187,7 @@ export default function ClientDetailPage() {
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Service</div>
           <div className="font-semibold text-sm">{serviceType?.name || "—"}</div>
-          {serviceType && <div className="text-xs text-ink-400">${Number(serviceType.rate).toFixed(2)} / session</div>}
+          {!isTherapist && serviceType && <div className="text-xs text-ink-400">${Number(serviceType.rate).toFixed(2)} / session</div>}
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Schedule</div>
@@ -211,9 +216,11 @@ export default function ClientDetailPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-ink-500">{notes.length} note{notes.length !== 1 ? "s" : ""}</div>
-            <button onClick={() => { setNoteForm({ title: "", content: "", category: "general" }); setEditNoteId(null); setShowNoteForm(true); }} className="btn-primary btn-sm">
-              + Add Note
-            </button>
+            {!isTherapist && (
+              <button onClick={() => { setNoteForm({ title: "", content: "", category: "general" }); setEditNoteId(null); setShowNoteForm(true); }} className="btn-primary btn-sm">
+                + Add Note
+              </button>
+            )}
           </div>
 
           {showNoteForm && (
@@ -263,10 +270,12 @@ export default function ClientDetailPage() {
                         </div>
                         <div className="text-xs text-ink-400 mt-0.5">{formatDateTime(n.created_at)}</div>
                       </div>
-                      <div className="flex gap-1">
-                        <button onClick={() => { setNoteForm({ title: n.title, content: n.content || "", category: n.category }); setEditNoteId(n.id); setShowNoteForm(true); }} className="btn-ghost btn-sm">Edit</button>
-                        <button onClick={() => deleteNote(n.id)} className="btn-ghost btn-sm text-red-500">Delete</button>
-                      </div>
+                      {!isTherapist && (
+                        <div className="flex gap-1">
+                          <button onClick={() => { setNoteForm({ title: n.title, content: n.content || "", category: n.category }); setEditNoteId(n.id); setShowNoteForm(true); }} className="btn-ghost btn-sm">Edit</button>
+                          <button onClick={() => deleteNote(n.id)} className="btn-ghost btn-sm text-red-500">Delete</button>
+                        </div>
+                      )}
                     </div>
                     {n.content && (
                       <div className="text-sm text-ink-700 whitespace-pre-wrap bg-surface-50 rounded-lg p-3 mt-2">{n.content}</div>

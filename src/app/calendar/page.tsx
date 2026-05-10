@@ -13,11 +13,11 @@ import type { Session } from "@/lib/types";
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const STATUS_BTN: Record<string, { label: string; icon: string; cls: string }> = {
-  attended: { label: "Attended", icon: "✓", cls: "bg-emerald-600 text-white" },
-  late_cancel: { label: "Late", icon: "⏰", cls: "bg-amber-500 text-white" },
-  no_show: { label: "No-Show", icon: "✗", cls: "bg-red-600 text-white" },
-  cancelled: { label: "Cancel", icon: "—", cls: "bg-surface-300 text-ink-500" },
+const STATUS_CFG: Record<string, { label: string; icon: string; activeCls: string }> = {
+  attended:    { label: "Attended",    icon: "✓", activeCls: "bg-emerald-600 text-white border-emerald-600" },
+  late_cancel: { label: "Late Cancel", icon: "⏰", activeCls: "bg-amber-500 text-white border-amber-500" },
+  no_show:     { label: "No-Show",     icon: "✗", activeCls: "bg-red-600 text-white border-red-600" },
+  cancelled:   { label: "Cancelled",   icon: "—", activeCls: "bg-surface-300 text-ink-600 border-surface-300" },
 };
 
 export default function CalendarPage() {
@@ -37,6 +37,11 @@ export default function CalendarPage() {
   const [editSession, setEditSession] = useState<Session | null>(null);
   const [editForm, setEditForm] = useState({ therapist_id: "", service_type_id: "", session_time: "", session_date: "", notes: "" });
 
+  // Therapist-specific state
+  const [pendingConfirm, setPendingConfirm] = useState<{ session: Session; status: string } | null>(null);
+  const [swapSource, setSwapSource] = useState<Session | null>(null);
+  const [swapping, setSwapping] = useState(false);
+
   const { data: sessions = [], isLoading: loadingSessions } = useSessionsForMonth(year, month);
   const { data: clients = [] } = useClients(true);
   const { data: therapists = [] } = useTherapists();
@@ -55,6 +60,7 @@ export default function CalendarPage() {
   const updateStatus = async (session: Session, newStatus: string) => {
     if (updating) return;
     setUpdating(session.id);
+    setPendingConfirm(null);
 
     await supabase.from("sessions").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", session.id);
     await supabase.from("charges").delete().eq("session_id", session.id);
@@ -69,6 +75,20 @@ export default function CalendarPage() {
       await supabase.from("charges").insert({ client_id: session.client_id, session_id: session.id, charge_date: session.session_date, description: chargeDesc, amount: chargeAmount });
     }
     setUpdating(null);
+    invalidateSessions();
+  };
+
+  const doSwap = async (sessionB: Session) => {
+    if (!swapSource || swapping) return;
+    setSwapping(true);
+    const timeA = swapSource.session_time;
+    const timeB = sessionB.session_time;
+    await Promise.all([
+      supabase.from("sessions").update({ session_time: timeB, updated_at: new Date().toISOString() }).eq("id", swapSource.id),
+      supabase.from("sessions").update({ session_time: timeA, updated_at: new Date().toISOString() }).eq("id", sessionB.id),
+    ]);
+    setSwapSource(null);
+    setSwapping(false);
     invalidateSessions();
   };
 
@@ -92,9 +112,8 @@ export default function CalendarPage() {
   };
 
   const firstOfMonth = new Date(year, month, 1);
-  const lastOfMonth = new Date(year, month + 1, 0);
   const firstDayOfWeek = firstOfMonth.getDay();
-  const daysInMonth = lastOfMonth.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const weeks: (number | null)[][] = [];
   let week: (number | null)[] = new Array(firstDayOfWeek).fill(null);
@@ -104,12 +123,20 @@ export default function CalendarPage() {
   }
   if (week.length > 0) { while (week.length < 7) week.push(null); weeks.push(week); }
 
-  const getDateStr = (day: number) => `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const filteredSessions = filterTherapist === "all" ? sessions : sessions.filter((s) => s.therapist_id === filterTherapist);
+  const getDateStr = (day: number) =>
+    `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  const filteredSessions = filterTherapist === "all"
+    ? sessions
+    : sessions.filter((s) => s.therapist_id === filterTherapist);
+
   const getSessionsForDay = (day: number) =>
-    filteredSessions.filter((s) => s.session_date === getDateStr(day)).sort((a, b) => (a.session_time || "").localeCompare(b.session_time || ""));
+    filteredSessions.filter((s) => s.session_date === getDateStr(day))
+      .sort((a, b) => (a.session_time || "").localeCompare(b.session_time || ""));
+
   const selectedSessions = selectedDay
-    ? filteredSessions.filter((s) => s.session_date === selectedDay).sort((a, b) => (a.session_time || "").localeCompare(b.session_time || ""))
+    ? filteredSessions.filter((s) => s.session_date === selectedDay)
+        .sort((a, b) => (a.session_time || "").localeCompare(b.session_time || ""))
     : [];
 
   const prevMonth = () => { if (month === 0) { setMonth(11); setYear(year - 1); } else setMonth(month - 1); setSelectedDay(null); };
@@ -161,11 +188,11 @@ export default function CalendarPage() {
                             {daySessions.slice(0, 4).map((s) => {
                               const cl = getClient(s.client_id);
                               const th = getTherapist(s.therapist_id);
-                              const statusDot = s.status === "attended" ? "🟢" : s.status === "late_cancel" ? "🟡" : s.status === "no_show" ? "🔴" : "";
+                              const dot = s.status === "attended" ? "🟢" : s.status === "late_cancel" ? "🟡" : s.status === "no_show" ? "🔴" : "";
                               return (
                                 <div key={s.id} className="text-[10px] leading-tight px-1 py-0.5 rounded truncate font-medium"
                                   style={{ backgroundColor: th ? th.color + "18" : "#f3f4f6", color: th?.color || "#6b7280", borderLeft: `2px solid ${th?.color || "#d1d5db"}` }}>
-                                  {statusDot}{s.session_time ? formatTime(s.session_time).replace(" ", "") + " " : ""}{cl ? `${cl.first_name} ${cl.last_name[0]}.` : "?"}
+                                  {dot}{s.session_time ? formatTime(s.session_time).replace(" ", "") + " " : ""}{cl ? `${cl.first_name} ${cl.last_name[0]}.` : "?"}
                                 </div>
                               );
                             })}
@@ -185,20 +212,136 @@ export default function CalendarPage() {
           </div>
         </div>
 
+        {/* Day panel */}
         {selectedDay && (
           <div className="w-full lg:w-96 lg:flex-shrink-0">
             <div className="card sticky top-4">
               <div className="px-4 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold">{new Date(selectedDay + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</h3>
-                  {selectedSessions.length > 0 && <div className="text-xs text-ink-500">{checkedIn}/{selectedSessions.length} checked in</div>}
+                  {selectedSessions.length > 0 && (
+                    <div className="text-xs text-ink-500">{checkedIn}/{selectedSessions.length} checked in</div>
+                  )}
                 </div>
-                <button onClick={() => setSelectedDay(null)} className="btn-ghost btn-sm">&times;</button>
+                <div className="flex items-center gap-2">
+                  {swapSource && (
+                    <span className="text-xs text-brand-600 font-semibold">Select 2nd to swap &rarr;</span>
+                  )}
+                  <button onClick={() => { setSelectedDay(null); setSwapSource(null); setPendingConfirm(null); }} className="btn-ghost btn-sm">&times;</button>
+                </div>
               </div>
 
               {selectedSessions.length === 0 ? (
                 <div className="p-8 text-center text-ink-400 text-sm">No sessions scheduled</div>
+              ) : isTherapist ? (
+                // ── Therapist view ──────────────────────────────────────
+                <div className="divide-y divide-surface-200 max-h-[70vh] overflow-auto">
+                  {selectedSessions.map((s) => {
+                    const cl = getClient(s.client_id);
+                    const svc = getService(s.service_type_id);
+                    const isProcessing = updating === s.id || swapping;
+                    const isSwapSource = swapSource?.id === s.id;
+                    const isConfirming = pendingConfirm?.session.id === s.id;
+
+                    return (
+                      <div key={s.id}
+                        className={`p-4 transition-colors ${isSwapSource ? "bg-brand-50" : s.status !== "scheduled" ? "bg-surface-50/60" : ""} ${isProcessing ? "opacity-60" : ""}`}
+                      >
+                        {/* Header row */}
+                        <div className="flex items-start justify-between mb-1">
+                          <button
+                            onClick={() => router.push(`/clients/${s.client_id}`)}
+                            className="font-bold text-brand-600 hover:text-brand-800 text-left leading-tight"
+                          >
+                            {cl ? `${cl.first_name} ${cl.last_name}` : "Unknown"}
+                          </button>
+                          <span className="text-xs text-ink-400 font-semibold ml-2 flex-shrink-0">
+                            {s.session_time ? formatTime(s.session_time) : "—"}
+                          </span>
+                        </div>
+                        <div className="text-xs text-ink-400 mb-3">
+                          {svc?.name} &middot; {svc?.duration}min
+                          {s.notes && <span className="italic ml-1">— {s.notes}</span>}
+                        </div>
+
+                        {/* Confirm step */}
+                        {isConfirming && pendingConfirm ? (
+                          <div className="bg-ink-900 text-white rounded-xl p-3">
+                            <div className="text-sm font-semibold mb-3">
+                              Mark as <span className="text-emerald-300">{STATUS_CFG[pendingConfirm.status]?.label}</span>?
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateStatus(s, pendingConfirm.status)}
+                                disabled={isProcessing}
+                                className="flex-1 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors"
+                              >
+                                {isProcessing ? "Saving..." : "Confirm"}
+                              </button>
+                              <button
+                                onClick={() => setPendingConfirm(null)}
+                                className="flex-1 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : swapSource && !isSwapSource ? (
+                          // Swap target mode
+                          <button
+                            onClick={() => doSwap(s)}
+                            disabled={isProcessing}
+                            className="w-full py-2 rounded-xl text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+                          >
+                            Swap with {formatTime(s.session_time || "10:00")}
+                          </button>
+                        ) : isSwapSource ? (
+                          <button
+                            onClick={() => setSwapSource(null)}
+                            className="w-full py-2 rounded-xl text-sm font-semibold bg-brand-100 text-brand-700 hover:bg-brand-200 transition-colors"
+                          >
+                            Cancel Swap
+                          </button>
+                        ) : (
+                          <div className="space-y-2">
+                            {/* Status buttons */}
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {Object.entries(STATUS_CFG).map(([status, cfg]) => {
+                                const isActive = s.status === status;
+                                return (
+                                  <button
+                                    key={status}
+                                    onClick={() => {
+                                      if (isActive) { updateStatus(s, "scheduled"); return; }
+                                      setPendingConfirm({ session: s, status });
+                                    }}
+                                    disabled={isProcessing}
+                                    className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
+                                      isActive
+                                        ? cfg.activeCls
+                                        : "bg-white text-ink-500 border-surface-300 hover:border-ink-300"
+                                    }`}
+                                  >
+                                    {cfg.icon} {cfg.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Swap times */}
+                            <button
+                              onClick={() => setSwapSource(s)}
+                              className="w-full py-1.5 rounded-xl text-xs font-semibold text-ink-400 hover:text-brand-600 hover:bg-brand-50 transition-colors border border-surface-200"
+                            >
+                              ⇄ Swap Time
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
+                // ── Admin / Secretary view (original) ───────────────────
                 <div className="divide-y divide-surface-200 max-h-[70vh] overflow-auto">
                   {selectedSessions.map((s) => {
                     const cl = getClient(s.client_id);
@@ -214,21 +357,26 @@ export default function CalendarPage() {
                             className="font-semibold text-sm text-brand-600 hover:text-brand-800 text-left">
                             {cl ? `${cl.first_name} ${cl.last_name}` : "Unknown"}
                           </button>
-                          <button onClick={() => { setEditForm({ therapist_id: s.therapist_id, service_type_id: s.service_type_id, session_time: s.session_time || "10:00", session_date: s.session_date, notes: s.notes || "" }); setEditSession(s); }} className="text-[10px] text-ink-400 hover:text-brand-600">edit</button>
+                          <button
+                            onClick={() => { setEditForm({ therapist_id: s.therapist_id, service_type_id: s.service_type_id, session_time: s.session_time || "10:00", session_date: s.session_date, notes: s.notes || "" }); setEditSession(s); }}
+                            className="text-[10px] text-ink-400 hover:text-brand-600"
+                          >
+                            edit
+                          </button>
                         </div>
                         <div className="text-xs text-ink-400 mb-2">
                           {s.session_time && <span>{formatTime(s.session_time)} &middot; </span>}
-                          {svc?.name} &middot; {svc?.duration}min
+                          {th?.name} &middot; {svc?.name}
                           {s.notes && <span className="italic ml-1">— {s.notes}</span>}
                         </div>
-                        <div className="flex gap-1">
-                          {Object.entries(STATUS_BTN).map(([status, cfg]) => {
+                        <div className="flex gap-1 flex-wrap">
+                          {Object.entries(STATUS_CFG).map(([status, cfg]) => {
                             const isActive = s.status === status;
                             return (
                               <button key={status}
                                 onClick={() => updateStatus(s, isActive ? "scheduled" : status)}
                                 disabled={isProcessing}
-                                className={`px-2 py-1 rounded text-[10px] font-semibold transition-all ${isActive ? cfg.cls : "bg-surface-100 text-ink-400 hover:bg-surface-200"}`}>
+                                className={`px-2 py-1 rounded text-[10px] font-semibold transition-all ${isActive ? cfg.activeCls : "bg-surface-100 text-ink-400 hover:bg-surface-200"}`}>
                                 {cfg.icon} {cfg.label}
                               </button>
                             );
@@ -247,7 +395,7 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {editSession && (
+      {editSession && !isTherapist && (
         <Modal
           title="Edit Session"
           subtitle={`${getClient(editSession.client_id)?.first_name} ${getClient(editSession.client_id)?.last_name}`}

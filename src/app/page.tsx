@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTherapists, useServiceTypes, useClients, useBalances, useSessions } from "@/hooks";
@@ -12,6 +13,12 @@ export default function DashboardPage() {
   const router = useRouter();
   const { role, therapistId } = useUser();
   const isTherapist = role === "therapist" && !!therapistId;
+
+  // Therapists live in the calendar, not the dashboard
+  useEffect(() => {
+    if (role === "therapist") router.replace("/calendar");
+  }, [role, router]);
+
   const today = new Date();
   const date = todayStr();
   const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;

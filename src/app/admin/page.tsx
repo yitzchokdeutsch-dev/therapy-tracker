@@ -5,7 +5,7 @@ import { listUsers, setUserRole, type UserRow } from "@/app/actions/admin";
 import { useTherapists } from "@/hooks";
 import { ROLE_LABELS, ROLE_COLORS, type Role } from "@/lib/permissions";
 
-const ROLES: Role[] = ["admin", "therapist", "billing", "readonly"];
+const ROLES: Role[] = ["admin", "secretary", "therapist", "billing", "readonly"];
 
 export default function AdminPage() {
   const [users, setUsers] = useState<UserRow[]>([]);

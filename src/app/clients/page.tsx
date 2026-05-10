@@ -311,10 +311,12 @@ export default function ClientsPage() {
                     )}
                     <td className="table-cell text-right">
                       <button onClick={(e) => { e.stopPropagation(); router.push(`/clients/${c.id}`); }} className="btn-ghost btn-sm">View</button>
-                      <button onClick={(e) => { e.stopPropagation(); openEdit(c); }} className="btn-ghost btn-sm">Edit</button>
-                      <button onClick={(e) => { e.stopPropagation(); toggleActive(c); }} className="btn-ghost btn-sm">
-                        {c.active ? "Deactivate" : "Activate"}
-                      </button>
+                      {!isTherapist && <>
+                        <button onClick={(e) => { e.stopPropagation(); openEdit(c); }} className="btn-ghost btn-sm">Edit</button>
+                        <button onClick={(e) => { e.stopPropagation(); toggleActive(c); }} className="btn-ghost btn-sm">
+                          {c.active ? "Deactivate" : "Activate"}
+                        </button>
+                      </>}
                     </td>
                   </tr>
                 );
