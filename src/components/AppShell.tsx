@@ -2,13 +2,17 @@
 
 import { useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import RoleGuard from "@/components/RoleGuard";
+import type { Role } from "@/lib/permissions";
 
 export default function AppShell({
   children,
   userEmail,
+  userRole,
 }: {
   children: React.ReactNode;
   userEmail: string;
+  userRole: Role;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -16,6 +20,7 @@ export default function AppShell({
     <div className="flex min-h-screen">
       <Sidebar
         userEmail={userEmail}
+        userRole={userRole}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -41,7 +46,9 @@ export default function AppShell({
 
       <main className="flex-1 md:ml-64 pt-14 md:pt-0">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-8">
-          {children}
+          <RoleGuard role={userRole}>
+            {children}
+          </RoleGuard>
         </div>
       </main>
     </div>

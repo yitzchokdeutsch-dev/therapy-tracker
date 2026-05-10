@@ -50,11 +50,42 @@ export function can(user: UserContext, permission: Permission): boolean {
   return RULES[user.role][permission];
 }
 
-/** Returns the therapist IDs this user is allowed to see. Admins see all. */
 export function visibleTherapistIds(user: UserContext, allIds: string[]): string[] {
   if (user.role === "therapist" && user.therapistId) return [user.therapistId];
   return allIds;
 }
 
-/** Stub until auth is wired — swap this for a real session lookup. */
-export const MOCK_USER: UserContext = { role: "admin" };
+// Which roles can visit each route prefix
+export const PAGE_ACCESS: Record<string, Role[]> = {
+  "/":           ["admin", "therapist", "billing", "readonly"],
+  "/clients":    ["admin", "therapist", "billing", "readonly"],
+  "/scheduling": ["admin", "therapist"],
+  "/checkin":    ["admin", "therapist"],
+  "/calendar":   ["admin", "therapist", "billing", "readonly"],
+  "/payments":   ["admin", "billing"],
+  "/billing":    ["admin", "billing"],
+  "/setup":      ["admin"],
+  "/admin":      ["admin"],
+  "/account":    ["admin", "therapist", "billing", "readonly"],
+};
+
+export function canAccessPage(role: Role, pathname: string): boolean {
+  const match = Object.entries(PAGE_ACCESS).find(([path]) =>
+    path === "/" ? pathname === "/" : pathname.startsWith(path)
+  );
+  return match ? match[1].includes(role) : true;
+}
+
+export const ROLE_LABELS: Record<Role, string> = {
+  admin:     "Admin",
+  therapist: "Therapist",
+  billing:   "Billing",
+  readonly:  "Read Only",
+};
+
+export const ROLE_COLORS: Record<Role, string> = {
+  admin:     "bg-brand-100 text-brand-700",
+  therapist: "bg-emerald-100 text-emerald-700",
+  billing:   "bg-purple-100 text-purple-700",
+  readonly:  "bg-surface-200 text-ink-500",
+};
