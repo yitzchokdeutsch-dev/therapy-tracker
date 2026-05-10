@@ -16,10 +16,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const { data: { user } } = await supabase.auth.getUser();
 
   let userRole: Role = "admin"; // safe default before migration is run
+  let userTherapistId: string | null = null;
+
   if (user) {
     const { data: roleRow } = await supabase
-      .from("user_roles").select("role").eq("user_id", user.id).single();
+      .from("user_roles").select("role, therapist_id").eq("user_id", user.id).single();
     if (roleRow?.role) userRole = roleRow.role as Role;
+    if (roleRow?.therapist_id) userTherapistId = roleRow.therapist_id;
   }
 
   return (
@@ -28,7 +31,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Providers>
           {user ? (
             <SessionGuard>
-              <AppShell userEmail={user.email ?? ""} userRole={userRole}>
+              <AppShell
+                userEmail={user.email ?? ""}
+                userRole={userRole}
+                userTherapistId={userTherapistId}
+              >
                 {children}
               </AppShell>
             </SessionGuard>

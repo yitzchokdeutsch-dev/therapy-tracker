@@ -8,6 +8,7 @@ import { useClients, useTherapists, useServiceTypes, useFees, useSessionsForMont
 import { getSessionRate, getLateCancelFee, getNoShowFee } from "@/lib/fees";
 import { fmt, formatTime, todayStr, MONTHS } from "@/lib/utils";
 import Modal from "@/components/Modal";
+import { useUser } from "@/lib/user-context";
 import type { Session } from "@/lib/types";
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -25,10 +26,13 @@ export default function CalendarPage() {
   const today = new Date();
   const todayDate = todayStr();
 
+  const { role, therapistId } = useUser();
+  const isTherapist = role === "therapist" && !!therapistId;
+
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [filterTherapist, setFilterTherapist] = useState("all");
+  const [filterTherapist, setFilterTherapist] = useState(isTherapist ? therapistId! : "all");
   const [updating, setUpdating] = useState<string | null>(null);
   const [editSession, setEditSession] = useState<Session | null>(null);
   const [editForm, setEditForm] = useState({ therapist_id: "", service_type_id: "", session_time: "", session_date: "", notes: "" });
@@ -118,10 +122,12 @@ export default function CalendarPage() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Calendar</h1>
-        <select className="input-field w-44 py-1.5 text-sm" value={filterTherapist} onChange={(e) => setFilterTherapist(e.target.value)}>
-          <option value="all">All Therapists</option>
-          {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        {!isTherapist && (
+          <select className="input-field w-44 py-1.5 text-sm" value={filterTherapist} onChange={(e) => setFilterTherapist(e.target.value)}>
+            <option value="all">All Therapists</option>
+            {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mb-4">

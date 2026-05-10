@@ -7,9 +7,19 @@ async function requireAdmin() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-  const { data: row } = await supabase.from("user_roles").select("role").eq("user_id", user.id).single();
-  if (row?.role !== "admin") throw new Error("Admin access required");
-  return user;
+
+  const { data: row } = await supabase
+    .from("user_roles").select("role").eq("user_id", user.id).single();
+
+  if (row?.role === "admin") return user;
+
+  // Allow access when no roles have been configured yet (initial setup)
+  const admin = createAdminClient();
+  const { count } = await admin
+    .from("user_roles").select("*", { count: "exact", head: true });
+  if (count === 0) return user;
+
+  throw new Error("Admin access required");
 }
 
 export type UserRow = {

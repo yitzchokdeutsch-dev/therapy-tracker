@@ -6,11 +6,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useClients, useTherapists, useServiceTypes, useBalances } from "@/hooks";
 import { fmt, DAYS } from "@/lib/utils";
+import { useUser } from "@/lib/user-context";
 import type { Client, Therapist, ServiceType } from "@/lib/types";
 
 export default function ClientsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { role, therapistId } = useUser();
+  const isTherapist = role === "therapist" && !!therapistId;
 
   const { data: clients = [], isLoading: loadingClients } = useClients();
   const { data: therapists = [], isLoading: loadingTherapists } = useTherapists();
@@ -39,6 +42,7 @@ export default function ClientsPage() {
   };
 
   const filtered = clients.filter((c) => {
+    if (isTherapist && c.therapist_id !== therapistId) return false;
     const q = search.toLowerCase();
     return `${c.first_name} ${c.last_name} ${c.guardian}`.toLowerCase().includes(q);
   });
@@ -265,7 +269,7 @@ export default function ClientsPage() {
                 <th className="table-header">Service</th>
                 <th className="table-header">Rate</th>
                 <th className="table-header">Schedule</th>
-                <th className="table-header text-right">Balance</th>
+                {!isTherapist && <th className="table-header text-right">Balance</th>}
                 <th className="table-header text-right">Actions</th>
               </tr>
             </thead>
@@ -298,11 +302,13 @@ export default function ClientsPage() {
                         ? c.session_days.map((d) => DAYS[d]).join(", ")
                         : <span className="text-ink-400">—</span>}
                     </td>
-                    <td className="table-cell text-right">
-                      <span className={`font-bold ${bal > 0 ? "text-red-600" : bal < 0 ? "text-emerald-600" : "text-ink-500"}`}>
-                        {bal > 0 ? fmt(bal) : bal < 0 ? `-${fmt(bal)}` : "$0.00"}
-                      </span>
-                    </td>
+                    {!isTherapist && (
+                      <td className="table-cell text-right">
+                        <span className={`font-bold ${bal > 0 ? "text-red-600" : bal < 0 ? "text-emerald-600" : "text-ink-500"}`}>
+                          {bal > 0 ? fmt(bal) : bal < 0 ? `-${fmt(bal)}` : "$0.00"}
+                        </span>
+                      </td>
+                    )}
                     <td className="table-cell text-right">
                       <button onClick={(e) => { e.stopPropagation(); router.push(`/clients/${c.id}`); }} className="btn-ghost btn-sm">View</button>
                       <button onClick={(e) => { e.stopPropagation(); openEdit(c); }} className="btn-ghost btn-sm">Edit</button>

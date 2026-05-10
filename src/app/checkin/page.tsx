@@ -7,6 +7,7 @@ import { getSessionRate, getLateCancelFee, getNoShowFee } from "@/lib/fees";
 import { fmt, todayStr, toDateStr } from "@/lib/utils";
 import Modal from "@/components/Modal";
 import { SkeletonCheckinCard } from "@/components/Skeleton";
+import { useUser } from "@/lib/user-context";
 import type { Session } from "@/lib/types";
 import type { SessionStatusInput } from "@/lib/schemas";
 
@@ -19,9 +20,11 @@ const STATUS_OPTIONS = [
 
 export default function CheckInPage() {
   const today = todayStr();
+  const { role, therapistId } = useUser();
+  const isTherapist = role === "therapist" && !!therapistId;
 
   const [date, setDate] = useState(today);
-  const [filterTherapist, setFilterTherapist] = useState("all");
+  const [filterTherapist, setFilterTherapist] = useState(isTherapist ? therapistId! : "all");
   const [editSession, setEditSession] = useState<Session | null>(null);
   const [editForm, setEditForm] = useState({ therapist_id: "", service_type_id: "", session_time: "", session_date: "", notes: "" });
   const [showAdd, setShowAdd] = useState(false);
@@ -129,10 +132,12 @@ export default function CheckInPage() {
           >
             + Add Session
           </button>
-          <select className="input-field w-44 py-1.5 text-sm" value={filterTherapist} onChange={(e) => setFilterTherapist(e.target.value)}>
-            <option value="all">All Therapists</option>
-            {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          {!isTherapist && (
+            <select className="input-field w-44 py-1.5 text-sm" value={filterTherapist} onChange={(e) => setFilterTherapist(e.target.value)}>
+              <option value="all">All Therapists</option>
+              {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
         </div>
       </div>
 

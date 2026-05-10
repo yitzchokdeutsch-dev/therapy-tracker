@@ -6,9 +6,12 @@ import { useTherapists, useServiceTypes, useClients, useBalances, useSessions } 
 import { supabase } from "@/lib/supabase";
 import { fmt, todayStr, STATUS_BADGE } from "@/lib/utils";
 import { SkeletonStatCards, SkeletonCard } from "@/components/Skeleton";
+import { useUser } from "@/lib/user-context";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { role, therapistId } = useUser();
+  const isTherapist = role === "therapist" && !!therapistId;
   const today = new Date();
   const date = todayStr();
   const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -43,7 +46,14 @@ export default function DashboardPage() {
   const displayDate = today.toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
   });
-  const checkedIn = sessions.filter((s) => s.status !== "scheduled").length;
+  const visibleSessions = isTherapist
+    ? sessions.filter((s) => s.therapist_id === therapistId)
+    : sessions;
+  const visibleClients = isTherapist
+    ? clients.filter((c) => c.therapist_id === therapistId)
+    : clients;
+
+  const checkedIn = visibleSessions.filter((s) => s.status !== "scheduled").length;
 
   const topBalances = clients
     .map((c) => ({ client: c, balance: balances[c.id] ?? 0 }))
@@ -75,42 +85,48 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className={`grid gap-4 mb-6 ${isTherapist ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"}`}>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Today&apos;s Sessions</div>
-          <div className="text-3xl font-bold mt-1 text-brand-600">{sessions.length}</div>
+          <div className="text-3xl font-bold mt-1 text-brand-600">{visibleSessions.length}</div>
           <div className="text-xs text-ink-500 mt-0.5">{checkedIn} checked in</div>
         </div>
         <div className="card p-4">
-          <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Active Clients</div>
-          <div className="text-3xl font-bold mt-1">{clients.filter((c) => c.active).length}</div>
-          <div className="text-xs text-ink-500 mt-0.5">{clients.length} total</div>
+          <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">
+            {isTherapist ? "My Clients" : "Active Clients"}
+          </div>
+          <div className="text-3xl font-bold mt-1">{visibleClients.filter((c) => c.active).length}</div>
+          <div className="text-xs text-ink-500 mt-0.5">{visibleClients.length} total</div>
         </div>
-        <div className="card p-4">
-          <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Outstanding</div>
-          <div className="text-3xl font-bold mt-1 text-red-600">{fmt(totalOutstanding)}</div>
-          <div className="text-xs text-ink-500 mt-0.5">{topBalances.length} clients owe</div>
-        </div>
-        <div className="card p-4">
-          <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">This Month</div>
-          <div className="text-3xl font-bold mt-1 text-emerald-600">{fmt(monthlyStats?.monthPayments ?? 0)}</div>
-          <div className="text-xs text-ink-500 mt-0.5">{fmt(monthlyStats?.monthCharges ?? 0)} charged</div>
-        </div>
+        {!isTherapist && (
+          <>
+            <div className="card p-4">
+              <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">Outstanding</div>
+              <div className="text-3xl font-bold mt-1 text-red-600">{fmt(totalOutstanding)}</div>
+              <div className="text-xs text-ink-500 mt-0.5">{topBalances.length} clients owe</div>
+            </div>
+            <div className="card p-4">
+              <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold">This Month</div>
+              <div className="text-3xl font-bold mt-1 text-emerald-600">{fmt(monthlyStats?.monthPayments ?? 0)}</div>
+              <div className="text-xs text-ink-500 mt-0.5">{fmt(monthlyStats?.monthCharges ?? 0)} charged</div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="card overflow-hidden">
           <div className="px-5 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
-            <h3 className="font-semibold">Today&apos;s Schedule</h3>
+            <h3 className="font-semibold">{isTherapist ? "My Schedule Today" : "Today's Schedule"}</h3>
             <button onClick={() => router.push("/checkin")} className="btn-ghost btn-sm text-brand-600">
               Check-In &rarr;
             </button>
           </div>
-          {sessions.length === 0 ? (
+          {visibleSessions.length === 0 ? (
             <div className="p-8 text-center text-ink-400 text-sm">No sessions scheduled today</div>
           ) : (
             <div>
-              {sessions.map((s) => {
+              {visibleSessions.map((s) => {
                 const cl = getClient(s.client_id);
                 const th = getTherapist(s.therapist_id);
                 const svc = getService(s.service_type_id);
@@ -133,7 +149,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="card overflow-hidden">
+        {!isTherapist && <div className="card overflow-hidden">
           <div className="px-5 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
             <h3 className="font-semibold">Outstanding Balances</h3>
             <button onClick={() => router.push("/payments")} className="btn-ghost btn-sm text-brand-600">
@@ -161,7 +177,7 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

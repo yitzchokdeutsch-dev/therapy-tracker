@@ -17,9 +17,7 @@ create policy "read_own_role"
 
 -- All writes go through service-role server actions — no client-side write policies needed.
 
--- After running this migration, give yourself admin access:
+-- After running this migration, give yourself admin by email:
 -- INSERT INTO user_roles (user_id, role)
--- VALUES ('<your-user-id>', 'admin')
+-- SELECT id, 'admin' FROM auth.users WHERE email = 'your@email.com'
 -- ON CONFLICT (user_id) DO UPDATE SET role = 'admin';
---
--- Find your user_id in: Supabase Dashboard → Authentication → Users
