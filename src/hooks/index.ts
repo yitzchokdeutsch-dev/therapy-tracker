@@ -115,7 +115,10 @@ export function useSessions(dateStr: string) {
     queryKey: ["sessions", "date", dateStr],
     queryFn: async () => {
       const { data } = await supabase
-        .from("sessions").select("*").eq("session_date", dateStr).order("session_time");
+        .from("sessions").select("*")
+        .eq("session_date", dateStr)
+        .is("deleted_at", null)
+        .order("session_time");
       return (data ?? []) as Session[];
     },
     staleTime: 15_000,
@@ -134,6 +137,7 @@ export function useSessionsForMonth(year: number, month: number) {
         .from("sessions").select("*")
         .gte("session_date", startDate)
         .lte("session_date", endDate)
+        .is("deleted_at", null)
         .order("session_time");
       return (data ?? []) as Session[];
     },
@@ -160,6 +164,7 @@ export function usePaymentsForMonth(filterMonth: string) {
         .from("payments").select("*")
         .gte("payment_date", filterMonth + "-01")
         .lte("payment_date", filterMonth + "-31")
+        .is("deleted_at", null)
         .order("payment_date", { ascending: false });
       return (data ?? []) as Payment[];
     },

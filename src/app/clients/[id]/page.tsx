@@ -104,11 +104,36 @@ export default function ClientDetailPage() {
     load();
   };
 
+  const ALLOWED_TYPES: Record<string, string> = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "text/plain": "txt",
+  };
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!ALLOWED_TYPES[file.type]) {
+      alert("File type not allowed. Accepted: PDF, images, Word docs, Excel, plain text.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert("File is too large. Maximum size is 10 MB.");
+      e.target.value = "";
+      return;
+    }
+
     setUploading(true);
-    const path = `${clientId}/${Date.now()}-${file.name}`;
+    // Use crypto.randomUUID() to avoid filename collisions
+    const ext = ALLOWED_TYPES[file.type];
+    const path = `${clientId}/${crypto.randomUUID()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from("client-files").upload(path, file);
     if (uploadError) {
       alert("Upload failed: " + uploadError.message);
@@ -118,7 +143,7 @@ export default function ClientDetailPage() {
     await supabase.from("client_files").insert({
       client_id: clientId,
       file_name: file.name,
-      file_type: file.type || file.name.split(".").pop(),
+      file_type: file.type,
       file_size: file.size,
       storage_path: path,
       category: fileCategory,
@@ -137,7 +162,11 @@ export default function ClientDetailPage() {
     load();
   };
 
-  const getFileUrl = (path: string) => supabase.storage.from("client-files").getPublicUrl(path).data.publicUrl;
+  const openFile = async (path: string) => {
+    const { data, error } = await supabase.storage.from("client-files").createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) { alert("Could not open file."); return; }
+    window.open(data.signedUrl, "_blank");
+  };
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
@@ -355,7 +384,7 @@ export default function ClientDetailPage() {
                         <td className="table-cell text-ink-500 text-sm">{formatDate(f.created_at)}</td>
                         <td className="table-cell text-ink-500 text-sm">{f.notes || "—"}</td>
                         <td className="table-cell text-right">
-                          <a href={getFileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm inline-block">View</a>
+                          <button onClick={() => openFile(f.storage_path)} className="btn-ghost btn-sm">View</button>
                           <button onClick={() => deleteFile(f)} className="btn-ghost btn-sm text-red-500">Delete</button>
                         </td>
                       </tr>
