@@ -16,16 +16,17 @@ CREATE TABLE IF NOT EXISTS session_notes (
   session_id   uuid REFERENCES sessions ON DELETE SET NULL,
   therapist_id uuid REFERENCES therapists ON DELETE SET NULL,
   session_date date NOT NULL,
-  subjective   text,   -- What client/parent reports
-  objective    text,   -- Measurable therapist observations
-  assessment   text,   -- Clinical judgment / interpretation
-  plan         text,   -- Next session plan / HEP
+  subjective   text,
+  objective    text,
+  assessment   text,
+  plan         text,
   goals_addressed uuid[] DEFAULT '{}',
   created_at   timestamptz DEFAULT now(),
   updated_at   timestamptz DEFAULT now()
 );
 
 ALTER TABLE session_notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_all_session_notes" ON session_notes;
 CREATE POLICY "auth_all_session_notes" ON session_notes FOR ALL
   USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS goals (
 );
 
 ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_all_goals" ON goals;
 CREATE POLICY "auth_all_goals" ON goals FOR ALL
   USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
@@ -62,6 +64,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_all_tasks" ON tasks;
 CREATE POLICY "auth_all_tasks" ON tasks FOR ALL
   USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
