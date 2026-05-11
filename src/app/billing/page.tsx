@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useClients } from "@/hooks";
 import { fmt } from "@/lib/utils";
@@ -10,32 +11,34 @@ export default function BillingPage() {
   const today = new Date();
   const [billingMonth, setBillingMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
   const [selectedClient, setSelectedClient] = useState("all");
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [prevCharges, setPrevCharges] = useState<Charge[]>([]);
-  const [prevPayments, setPrevPayments] = useState<Payment[]>([]);
-  const [loadingBilling, setLoadingBilling] = useState(true);
 
   const { data: clients = [], isLoading: loadingClients } = useClients(true);
 
-  const loadBilling = useCallback(async () => {
-    setLoadingBilling(true);
-    const [y, m] = billingMonth.split("-").map(Number);
-    const monthEnd = `${billingMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
-    const [chRes, pRes, achRes, apRes] = await Promise.all([
-      supabase.from("charges").select("*").gte("charge_date", billingMonth + "-01").lte("charge_date", monthEnd).order("charge_date"),
-      supabase.from("payments").select("*").gte("payment_date", billingMonth + "-01").lte("payment_date", monthEnd).order("payment_date"),
-      supabase.from("charges").select("*").lt("charge_date", billingMonth + "-01").order("charge_date"),
-      supabase.from("payments").select("*").lt("payment_date", billingMonth + "-01").order("payment_date"),
-    ]);
-    setCharges((chRes.data || []).filter((r: any) => !r.deleted_at));
-    setPayments((pRes.data || []).filter((r: any) => !r.deleted_at));
-    setPrevCharges((achRes.data || []).filter((r: any) => !r.deleted_at));
-    setPrevPayments((apRes.data || []).filter((r: any) => !r.deleted_at));
-    setLoadingBilling(false);
-  }, [billingMonth]);
+  const { data: billingData, isLoading: loadingBilling } = useQuery({
+    queryKey: ["charges", "billing", billingMonth],
+    queryFn: async () => {
+      const [y, m] = billingMonth.split("-").map(Number);
+      const monthEnd = `${billingMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+      const [chRes, pRes, achRes, apRes] = await Promise.all([
+        supabase.from("charges").select("*").gte("charge_date", billingMonth + "-01").lte("charge_date", monthEnd).order("charge_date"),
+        supabase.from("payments").select("*").gte("payment_date", billingMonth + "-01").lte("payment_date", monthEnd).order("payment_date"),
+        supabase.from("charges").select("*").lt("charge_date", billingMonth + "-01").order("charge_date"),
+        supabase.from("payments").select("*").lt("payment_date", billingMonth + "-01").order("payment_date"),
+      ]);
+      return {
+        charges:      (chRes.data  || []).filter((r: any) => !r.deleted_at) as Charge[],
+        payments:     (pRes.data   || []).filter((r: any) => !r.deleted_at) as Payment[],
+        prevCharges:  (achRes.data || []).filter((r: any) => !r.deleted_at) as Charge[],
+        prevPayments: (apRes.data  || []).filter((r: any) => !r.deleted_at) as Payment[],
+      };
+    },
+    staleTime: 0, // always re-fetch when invalidated
+  });
 
-  useEffect(() => { loadBilling(); }, [loadBilling]);
+  const charges      = billingData?.charges      ?? [];
+  const payments     = billingData?.payments     ?? [];
+  const prevCharges  = billingData?.prevCharges  ?? [];
+  const prevPayments = billingData?.prevPayments ?? [];
 
   const billClients = selectedClient === "all"
     ? clients.filter((c) => {

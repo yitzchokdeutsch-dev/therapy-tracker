@@ -30,6 +30,7 @@ export function useUpdateSessionStatus(date: string) {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["balances"] });
+      queryClient.invalidateQueries({ queryKey: ["charges"] });
     },
   });
 }

@@ -34,17 +34,26 @@ export async function dbUpdateSessionStatus(
     .eq("id", sessionId);
   if (statusErr) throw new Error(statusErr.message);
 
-  // Soft-delete any existing charge for this session
-  await supabase
+  // Remove any existing charge for this session (try soft-delete, fall back to hard-delete)
+  const softDel = await supabase
     .from("charges")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("session_id", sessionId)
-    .is("deleted_at", null);
+    .eq("session_id", sessionId);
+  if (softDel.error) {
+    // deleted_at column doesn't exist yet — hard delete instead
+    await supabase.from("charges").delete().eq("session_id", sessionId);
+  }
 
   if (charge && charge.amount > 0) {
     const { error: chargeErr } = await supabase
       .from("charges")
-      .insert({ ...charge, session_id: sessionId });
+      .insert({
+        client_id:   charge.client_id,
+        amount:      charge.amount,
+        description: charge.description,
+        charge_date: charge.session_date, // session_date in schema maps to charge_date in DB
+        session_id:  sessionId,
+      });
     if (chargeErr) throw new Error(chargeErr.message);
   }
 
@@ -82,12 +91,12 @@ export async function dbUpdateSessionStatus(
 
 export async function dbDeleteSession(id: string) {
   const now = new Date().toISOString();
-  // Soft-delete related charges first
-  await supabase
-    .from("charges")
-    .update({ deleted_at: now })
-    .eq("session_id", id)
-    .is("deleted_at", null);
+  // Remove related charges (soft-delete if column exists, hard-delete otherwise)
+  const softDelCharge = await supabase
+    .from("charges").update({ deleted_at: now }).eq("session_id", id);
+  if (softDelCharge.error) {
+    await supabase.from("charges").delete().eq("session_id", id);
+  }
   // Soft-delete the session
   const { error } = await supabase
     .from("sessions")
