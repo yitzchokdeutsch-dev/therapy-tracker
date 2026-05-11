@@ -73,6 +73,7 @@ export const PAGE_ACCESS: Record<string, Role[]> = {
   "/tasks":      ["admin", "secretary", "therapist"],
   "/payments":   ["admin", "secretary", "billing"],
   "/billing":    ["admin", "secretary", "billing"],
+  "/superbill":  ["admin", "secretary", "billing"],
   "/reports":    ["admin", "secretary"],
   "/setup":      ["admin"],
   "/admin":      ["admin"],

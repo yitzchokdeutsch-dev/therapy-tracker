@@ -15,6 +15,7 @@ const nav = [
   { href: "/tasks",      label: "Tasks",     icon: "☑" },
   { href: "/payments",   label: "Payments",  icon: "$" },
   { href: "/billing",    label: "Billing",   icon: "◧" },
+  { href: "/superbill",  label: "Superbill", icon: "◫" },
   { href: "/reports",    label: "Reports",   icon: "▤" },
   { href: "/setup",      label: "Setup",     icon: "⚙" },
   { href: "/admin",      label: "Admin",     icon: "◈" },

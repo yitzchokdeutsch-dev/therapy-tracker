@@ -8,6 +8,7 @@ import { fmt, todayStr, toDateStr } from "@/lib/utils";
 import Modal from "@/components/Modal";
 import { SkeletonCheckinCard } from "@/components/Skeleton";
 import { useUser } from "@/lib/user-context";
+import { sendTomorrowReminders } from "@/app/actions/reminders";
 import type { Session } from "@/lib/types";
 import type { SessionStatusInput } from "@/lib/schemas";
 
@@ -40,6 +41,17 @@ export default function CheckInPage() {
   const createMutation = useCreateSession();
   const editMutation = useUpdateSession();
   const deleteMutation = useDeleteSession();
+
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [reminderResult, setReminderResult] = useState<{ sent: number; skipped: number; errors: string[] } | null>(null);
+
+  const handleSendReminders = async () => {
+    setSendingReminders(true);
+    setReminderResult(null);
+    const result = await sendTomorrowReminders();
+    setSendingReminders(false);
+    setReminderResult(result);
+  };
 
   const loading = loadingSessions || loadingClients;
 
@@ -120,9 +132,24 @@ export default function CheckInPage() {
 
   return (
     <div>
+      {reminderResult && (
+        <div className={`rounded-xl px-4 py-3 mb-4 text-sm border ${reminderResult.sent > 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-surface-100 border-surface-200 text-ink-600"}`}>
+          <span className="font-semibold">
+            {reminderResult.sent > 0 ? `✓ ${reminderResult.sent} reminder${reminderResult.sent !== 1 ? "s" : ""} sent` : "No reminders sent"}
+          </span>
+          {reminderResult.skipped > 0 && <span className="ml-2 text-ink-400">{reminderResult.skipped} skipped (already sent or no email)</span>}
+          {reminderResult.errors.length > 0 && <div className="mt-1 text-red-600">{reminderResult.errors.join(", ")}</div>}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Daily Check-In</h1>
         <div className="flex items-center gap-2">
+          {!isTherapist && (
+            <button onClick={handleSendReminders} disabled={sendingReminders} className="btn-outline btn-sm">
+              {sendingReminders ? "Sending..." : "📧 Send Tomorrow's Reminders"}
+            </button>
+          )}
           <button
             onClick={() => {
               setAddForm({ client_id: "", therapist_id: therapists[0]?.id || "", service_type_id: serviceTypes[0]?.id || "", session_time: "10:00", notes: "" });

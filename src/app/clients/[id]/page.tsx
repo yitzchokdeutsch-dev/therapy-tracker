@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
 import { useUser } from "@/lib/user-context";
-import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal } from "@/lib/types";
+import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal, Task } from "@/lib/types";
 
 const NOTE_CATEGORIES = [
   { value: "general",   label: "General",    color: "badge-blue" },
@@ -30,7 +30,7 @@ const GOAL_CATEGORIES = [
   "Cognitive", "Social-Emotional", "Communication", "Other",
 ];
 
-type Tab = "soap" | "goals" | "insurance" | "notes" | "files";
+type Tab = "soap" | "goals" | "insurance" | "forms" | "notes" | "files";
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -230,6 +230,7 @@ export default function ClientDetailPage() {
     { id: "soap",      label: "SOAP Notes",  count: soapNotes.length },
     { id: "goals",     label: "Goals",       count: goals.filter((g) => g.status === "active").length },
     ...(!isTherapist ? [{ id: "insurance" as Tab, label: "Insurance" }] : []),
+    { id: "forms",     label: "Intake Forms" },
     { id: "notes",     label: "Notes",       count: notes.length },
     { id: "files",     label: "Files",       count: files.length },
   ];
@@ -546,6 +547,11 @@ export default function ClientDetailPage() {
         <InsuranceTab client={client} clientId={clientId} onSaved={load} />
       )}
 
+      {/* ── Intake forms tab ──────────────────────────────────────────────── */}
+      {tab === "forms" && (
+        <IntakeFormsTab clientId={clientId} client={client} />
+      )}
+
       {/* ── General notes tab ──────────────────────────────────────────────── */}
       {tab === "notes" && (
         <div>
@@ -665,6 +671,153 @@ export default function ClientDetailPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Intake Forms Tab ──────────────────────────────────────────────────────────
+const TEMPLATES = [
+  {
+    id: "registration" as const,
+    label: "New Client Registration",
+    fields: [
+      { key: "emergency_contact_name",  label: "Emergency Contact Name" },
+      { key: "emergency_contact_phone", label: "Emergency Contact Phone" },
+      { key: "emergency_contact_rel",   label: "Relationship to Client" },
+      { key: "school_name",             label: "School / Program" },
+      { key: "teacher_name",            label: "Teacher / Case Manager" },
+      { key: "referral_source",         label: "Referred By" },
+      { key: "reason_for_referral",     label: "Reason for Referral", multiline: true },
+    ],
+  },
+  {
+    id: "consent" as const,
+    label: "Consent to Treat",
+    fields: [
+      { key: "consent_given_by",        label: "Consent Given By (Name)" },
+      { key: "relationship",            label: "Relationship to Client" },
+      { key: "consent_date",            label: "Date Signed", type: "date" },
+      { key: "hipaa_acknowledged",      label: "HIPAA Notice Acknowledged (yes/no)" },
+      { key: "financial_responsibility",label: "Financial Responsibility Acknowledged (yes/no)" },
+    ],
+  },
+  {
+    id: "medical_history" as const,
+    label: "Medical History",
+    fields: [
+      { key: "primary_diagnosis",   label: "Primary Diagnosis / Reason for OT" },
+      { key: "other_diagnoses",     label: "Other Medical Diagnoses" },
+      { key: "medications",         label: "Current Medications" },
+      { key: "prior_therapy",       label: "Prior Therapy Services" },
+      { key: "allergies",           label: "Allergies / Precautions" },
+      { key: "surgical_history",    label: "Surgical / Medical History" },
+      { key: "concerns",            label: "Primary Concerns / Goals", multiline: true },
+    ],
+  },
+];
+
+function IntakeFormsTab({ clientId, client }: { clientId: string; client: Client }) {
+  const [forms, setForms]       = useState<Record<string, { id: string; form_data: any; completed_at: string | null }>>({});
+  const [activeForm, setActive] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [saving, setSaving]     = useState(false);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    supabase.from("intake_forms").select("*").eq("client_id", clientId)
+      .then(({ data }) => {
+        const map: Record<string, any> = {};
+        (data || []).forEach((r) => { map[r.template] = r; });
+        setForms(map);
+        setLoading(false);
+      });
+  }, [clientId]);
+
+  const openForm = (templateId: string) => {
+    const existing = forms[templateId];
+    setFormData(existing?.form_data || {});
+    setActive(templateId);
+  };
+
+  const saveForm = async () => {
+    if (!activeForm) return;
+    setSaving(true);
+    const existing = forms[activeForm];
+    const payload  = { client_id: clientId, template: activeForm, form_data: formData, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (existing) { await supabase.from("intake_forms").update(payload).eq("id", existing.id); }
+    else          { await supabase.from("intake_forms").insert(payload); }
+    const { data } = await supabase.from("intake_forms").select("*").eq("client_id", clientId);
+    const map: Record<string, any> = {};
+    (data || []).forEach((r) => { map[r.template] = r; });
+    setForms(map);
+    setSaving(false);
+    setActive(null);
+  };
+
+  if (loading) return <div className="text-ink-400 py-8 text-center">Loading...</div>;
+
+  if (activeForm) {
+    const tmpl = TEMPLATES.find((t) => t.id === activeForm)!;
+    return (
+      <div>
+        <button onClick={() => setActive(null)} className="btn-ghost btn-sm mb-4">&larr; Back to Forms</button>
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-semibold">{tmpl.label}</h3>
+            <div className="flex gap-2">
+              <button onClick={() => window.print()} className="btn-outline btn-sm print:hidden">Print</button>
+              <button onClick={saveForm} disabled={saving} className="btn-primary btn-sm print:hidden">
+                {saving ? "Saving..." : "Save & Mark Complete"}
+              </button>
+            </div>
+          </div>
+          <div className="print:mb-4 print:text-xl print:font-bold print:border-b print:pb-2 hidden print:block">
+            {tmpl.label} — {client.first_name} {client.last_name}
+          </div>
+          <div className="space-y-4">
+            {tmpl.fields.map((f) => (
+              <div key={f.key}>
+                <label className="label">{f.label}</label>
+                {(f as any).multiline ? (
+                  <textarea className="input-field" rows={3} value={formData[f.key] || ""}
+                    onChange={(e) => setFormData({ ...formData, [f.key]: e.target.value })} />
+                ) : (
+                  <input className="input-field" type={(f as any).type || "text"} value={formData[f.key] || ""}
+                    onChange={(e) => setFormData({ ...formData, [f.key]: e.target.value })} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {TEMPLATES.map((t) => {
+        const existing = forms[t.id];
+        return (
+          <div key={t.id} className="card p-4 flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-sm">{t.label}</div>
+              <div className="text-xs text-ink-400 mt-0.5">
+                {existing?.completed_at
+                  ? `Completed ${new Date(existing.completed_at).toLocaleDateString()}`
+                  : "Not yet completed"}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {existing?.completed_at && (
+                <span className="badge badge-green text-[10px]">✓ Complete</span>
+              )}
+              <button onClick={() => openForm(t.id)} className="btn-outline btn-sm">
+                {existing ? "Edit / View" : "Fill Out"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

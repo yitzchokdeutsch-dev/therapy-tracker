@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAllTherapists, useAllServiceTypes } from "@/hooks";
 import { fmt, DAYS, DAYS_FULL } from "@/lib/utils";
 import type { Therapist, ServiceType, Fee, TherapistSchedule } from "@/lib/types";
 
-type Tab = "therapists" | "services" | "fees";
+type Tab = "therapists" | "services" | "fees" | "clinic";
 
 const COLORS = ["#2563eb","#7c3aed","#059669","#dc2626","#d97706","#0891b2","#be185d","#4f46e5","#15803d","#b45309"];
 
@@ -17,7 +17,7 @@ export default function SetupPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">Setup</h1>
       <div className="flex gap-1 bg-surface-100 rounded-lg p-1 w-fit mb-6">
-        {([{ id: "therapists", label: "Therapists" }, { id: "services", label: "Service Types" }, { id: "fees", label: "Fees" }] as const).map((t) => (
+        {([{ id: "therapists", label: "Therapists" }, { id: "services", label: "Service Types" }, { id: "fees", label: "Fees" }, { id: "clinic", label: "Clinic Info" }] as const).map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-5 py-2 rounded-md text-sm font-semibold transition-all ${tab === t.id ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
             {t.label}
@@ -27,6 +27,7 @@ export default function SetupPage() {
       {tab === "therapists" && <TherapistsTab />}
       {tab === "services" && <ServicesTab />}
       {tab === "fees" && <FeesTab />}
+      {tab === "clinic" && <ClinicTab />}
     </div>
   );
 }
@@ -189,7 +190,7 @@ function ServicesTab() {
   const { data: services = [], isLoading } = useAllServiceTypes();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", duration: "30", rate: "" });
+  const [form, setForm] = useState({ name: "", duration: "30", rate: "", cpt_code: "" });
   const [saving, setSaving] = useState(false);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["service_types"] });
@@ -197,7 +198,7 @@ function ServicesTab() {
   const save = async () => {
     if (!form.name.trim() || !form.rate) return;
     setSaving(true);
-    const payload = { name: form.name.trim(), duration: parseInt(form.duration), rate: parseFloat(form.rate) };
+    const payload = { name: form.name.trim(), duration: parseInt(form.duration), rate: parseFloat(form.rate), cpt_code: form.cpt_code.trim() || null };
     if (editId) { await supabase.from("service_types").update(payload).eq("id", editId); }
     else { await supabase.from("service_types").insert(payload); }
     setSaving(false);
@@ -211,14 +212,14 @@ function ServicesTab() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-ink-500">{services.length} service type{services.length !== 1 ? "s" : ""}</p>
-        <button onClick={() => { setForm({ name: "", duration: "30", rate: "" }); setEditId(null); setShowForm(true); }} className="btn-primary btn-sm">
+        <button onClick={() => { setForm({ name: "", duration: "30", rate: "", cpt_code: "" }); setEditId(null); setShowForm(true); }} className="btn-primary btn-sm">
           + Add Service Type
         </button>
       </div>
       {showForm && (
         <div className="card p-5 mb-4">
           <h3 className="font-semibold mb-4">{editId ? "Edit" : "Add"} Service Type</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div><label className="label">Name *</label><input className="input-field" placeholder="Individual 30 min" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div>
               <label className="label">Duration (minutes)</label>
@@ -227,6 +228,7 @@ function ServicesTab() {
               </select>
             </div>
             <div><label className="label">Default Rate *</label><input className="input-field" type="number" step="0.01" placeholder="125.00" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} /></div>
+            <div><label className="label">CPT Code</label><input className="input-field" placeholder="97530" value={form.cpt_code} onChange={(e) => setForm({ ...form, cpt_code: e.target.value })} /></div>
           </div>
           <div className="flex gap-2">
             <button onClick={save} disabled={saving || !form.name.trim() || !form.rate} className="btn-primary btn-sm">
@@ -243,17 +245,18 @@ function ServicesTab() {
           <div className="overflow-x-auto">
           <table className="w-full">
             <thead><tr className="border-b border-surface-200">
-              <th className="table-header">Service</th><th className="table-header">Duration</th><th className="table-header">Default Rate</th><th className="table-header">Status</th><th className="table-header text-right">Actions</th>
+              <th className="table-header">Service</th><th className="table-header">CPT</th><th className="table-header">Duration</th><th className="table-header">Default Rate</th><th className="table-header">Status</th><th className="table-header text-right">Actions</th>
             </tr></thead>
             <tbody>
               {services.map((s) => (
                 <tr key={s.id} className="table-row">
                   <td className="table-cell font-semibold">{s.name}</td>
+                  <td className="table-cell font-mono text-ink-500 text-xs">{(s as any).cpt_code || "—"}</td>
                   <td className="table-cell text-ink-500">{s.duration} min</td>
                   <td className="table-cell font-bold text-lg">{fmt(s.rate)}</td>
                   <td className="table-cell"><span className={s.active ? "badge badge-green" : "badge badge-gray"}>{s.active ? "Active" : "Inactive"}</span></td>
                   <td className="table-cell text-right">
-                    <button onClick={() => { setForm({ name: s.name, duration: String(s.duration), rate: String(s.rate) }); setEditId(s.id); setShowForm(true); }} className="btn-ghost btn-sm">Edit</button>
+                    <button onClick={() => { setForm({ name: s.name, duration: String(s.duration), rate: String(s.rate), cpt_code: (s as any).cpt_code || "" }); setEditId(s.id); setShowForm(true); }} className="btn-ghost btn-sm">Edit</button>
                   </td>
                 </tr>
               ))}
@@ -310,6 +313,62 @@ function FeesTab() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ClinicTab() {
+  const FIELDS = [
+    { key: "clinic_name",         label: "Clinic Name",           placeholder: "ABC Therapy Center" },
+    { key: "clinic_address",      label: "Clinic Address",        placeholder: "123 Main St, Lakewood NJ 08701" },
+    { key: "clinic_phone",        label: "Clinic Phone",          placeholder: "(732) 555-0100" },
+    { key: "clinic_npi",          label: "Clinic NPI",            placeholder: "1234567890" },
+    { key: "clinic_tax_id",       label: "Tax ID / EIN",          placeholder: "12-3456789" },
+    { key: "provider_name",       label: "Billing Provider Name", placeholder: "Jane Doe, OTR/L" },
+    { key: "provider_credentials",label: "Provider Credentials",  placeholder: "OTR/L, SIPT" },
+  ];
+
+  const [values, setValues]   = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]     = useState(false);
+
+  useEffect(() => {
+    supabase.from("settings").select("key, value").then(({ data }) => {
+      const map: Record<string, string> = {};
+      (data || []).forEach((row) => { map[row.key] = row.value || ""; });
+      setValues(map);
+      setLoading(false);
+    });
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    for (const { key } of FIELDS) {
+      await supabase.from("settings").upsert({ key, value: values[key] || "", updated_at: new Date().toISOString() }, { onConflict: "key" });
+    }
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  if (loading) return <div className="text-ink-400 py-8 text-center">Loading...</div>;
+
+  return (
+    <div className="max-w-xl">
+      <p className="text-sm text-ink-500 mb-5">Used on superbills, receipts, and reminder emails.</p>
+      <div className="card p-5 space-y-4">
+        {FIELDS.map(({ key, label, placeholder }) => (
+          <div key={key}>
+            <label className="label">{label}</label>
+            <input className="input-field" placeholder={placeholder} value={values[key] || ""}
+              onChange={(e) => setValues({ ...values, [key]: e.target.value })} />
+          </div>
+        ))}
+        <button onClick={save} disabled={saving} className="btn-primary w-full">
+          {saving ? "Saving..." : saved ? "✓ Saved" : "Save Clinic Info"}
+        </button>
       </div>
     </div>
   );
