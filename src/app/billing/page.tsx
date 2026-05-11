@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useClients } from "@/hooks";
@@ -50,6 +50,16 @@ export default function BillingPage() {
 
   const monthName = new Date(billingMonth + "-15").toLocaleDateString("en-US", { month: "long", year: "numeric" });
   const loading = loadingClients || loadingBilling;
+
+  // Print a single client's statement: temporarily filter to just them, print, restore
+  const printOne = useCallback((clientId: string) => {
+    const prev = selectedClient;
+    setSelectedClient(clientId);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.print();
+      setSelectedClient(prev);
+    }));
+  }, [selectedClient]);
 
   if (loading) return <div className="text-ink-400 py-12 text-center">Loading...</div>;
 
@@ -119,7 +129,7 @@ export default function BillingPage() {
           const newBal = prevBal + mChargeTotal - mPayTotal;
 
           return (
-            <div key={c.id} className="card mb-6 overflow-hidden" style={{ pageBreakAfter: "always", pageBreakInside: "avoid" }}>
+            <div key={c.id} className="billing-statement mb-6 border border-surface-200 rounded-xl overflow-hidden bg-white" style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
               <div className="bg-surface-50 border-b border-surface-200 px-6 py-4">
                 <div className="flex items-start justify-between flex-wrap gap-3">
                   <div>
@@ -132,10 +142,15 @@ export default function BillingPage() {
                     </div>
                     {c.address && <div className="text-sm text-ink-400">{c.address}</div>}
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-ink-400 uppercase font-semibold">Amount Due</div>
-                    <div className={`text-3xl font-bold ${newBal > 0 ? "text-red-600" : newBal < 0 ? "text-emerald-600" : "text-ink-500"}`}>
-                      {newBal > 0 ? fmt(newBal) : newBal < 0 ? `Credit: ${fmt(newBal)}` : "$0.00"}
+                  <div className="flex items-start gap-4">
+                    <button onClick={() => printOne(c.id)} className="btn-outline btn-sm print:hidden">
+                      🖨 Print
+                    </button>
+                    <div className="text-right">
+                      <div className="text-xs text-ink-400 uppercase font-semibold">Amount Due</div>
+                      <div className={`text-3xl font-bold ${newBal > 0 ? "text-red-600" : newBal < 0 ? "text-emerald-600" : "text-ink-500"}`}>
+                        {newBal > 0 ? fmt(newBal) : newBal < 0 ? `Credit: ${fmt(newBal)}` : "$0.00"}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -194,11 +209,20 @@ export default function BillingPage() {
 
       <style jsx global>{`
         @media print {
+          @page { margin: 0.75in; }
           body { background: white !important; }
-          .print\\:hidden { display: none !important; }
-          aside { display: none !important; }
-          main { margin-left: 0 !important; }
-          .card { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
+          .billing-statement {
+            break-after: page;
+            page-break-after: always;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            border: 1px solid #d1d5db !important;
+            box-shadow: none !important;
+          }
+          .billing-statement:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
         }
       `}</style>
     </div>

@@ -283,10 +283,8 @@ export default function SuperbillPage() {
 
       <style jsx global>{`
         @media print {
+          @page { margin: 0.75in; }
           body { background: white !important; }
-          .print\\:hidden { display: none !important; }
-          aside, header { display: none !important; }
-          main { margin-left: 0 !important; padding: 0 !important; }
           #superbill { max-width: 100% !important; }
         }
       `}</style>
