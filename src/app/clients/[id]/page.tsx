@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
 import { useUser } from "@/lib/user-context";
+import Modal from "@/components/Modal";
 import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal, Task, SoapCptCode } from "@/lib/types";
 import { ICD10_CODES } from "@/lib/icd10-codes";
 import { CPT_CODES } from "@/lib/cpt-codes";
@@ -53,6 +54,58 @@ export default function ClientDetailPage() {
   const [loading, setLoading]     = useState(true);
 
   const [tab, setTab] = useState<Tab>("soap");
+
+  // ── Edit client modal ─────────────────────────────────────────────────────
+  const [showEdit, setShowEdit]     = useState(false);
+  const [editForm, setEditForm]     = useState<Partial<Client>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [allTherapists, setAllTherapists]       = useState<Therapist[]>([]);
+  const [allServiceTypes, setAllServiceTypes]   = useState<ServiceType[]>([]);
+
+  const openEdit = () => {
+    if (!client) return;
+    setEditForm({ ...client });
+    setShowEdit(true);
+    // Load therapists and service types if not loaded
+    if (!allTherapists.length) {
+      supabase.from("therapists").select("*").eq("active", true).order("name")
+        .then(({ data }) => setAllTherapists(data || []));
+      supabase.from("service_types").select("*").eq("active", true).order("name")
+        .then(({ data }) => setAllServiceTypes(data || []));
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.first_name?.trim() || !editForm.last_name?.trim()) return;
+    setSavingEdit(true);
+    await supabase.from("clients").update({
+      first_name:      editForm.first_name?.trim(),
+      last_name:       editForm.last_name?.trim(),
+      guardian:        editForm.guardian?.trim()  || null,
+      phone:           editForm.phone?.trim()     || null,
+      email:           editForm.email?.trim()     || null,
+      address:         editForm.address?.trim()   || null,
+      therapist_id:    editForm.therapist_id      || null,
+      service_type_id: editForm.service_type_id   || null,
+      session_days:    editForm.session_days       ?? [],
+      start_date:      editForm.start_date         || null,
+      notes:           editForm.notes?.trim()     || null,
+      session_rate:    editForm.session_rate       ?? null,
+      late_cancel_fee: editForm.late_cancel_fee    ?? null,
+      no_show_fee:     editForm.no_show_fee        ?? null,
+    }).eq("id", clientId);
+    setSavingEdit(false);
+    setShowEdit(false);
+    load();
+  };
+
+  const toggleEditDay = (d: number) => {
+    const days = editForm.session_days || [];
+    setEditForm({
+      ...editForm,
+      session_days: days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b),
+    });
+  };
 
   // General note form
   const [showNoteForm, setShowNoteForm] = useState(false);
@@ -257,7 +310,12 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      <button onClick={() => router.push("/clients")} className="btn-ghost btn-sm mb-4">&larr; Back to Clients</button>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => router.push("/clients")} className="btn-ghost btn-sm">&larr; Back to Clients</button>
+        {!isTherapist && (
+          <button onClick={openEdit} className="btn-outline btn-sm">Edit Client</button>
+        )}
+      </div>
 
       {/* Header */}
       <div className="flex items-start justify-between mb-5 flex-wrap gap-4">
@@ -780,6 +838,91 @@ export default function ClientDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Edit Client Modal ───────────────────────────────────────────────── */}
+      {showEdit && client && (
+        <Modal
+          title="Edit Client"
+          subtitle={`${client.first_name} ${client.last_name}`}
+          onClose={() => setShowEdit(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowEdit(false)} className="btn-ghost btn-sm">Cancel</button>
+              <button onClick={saveEdit} disabled={savingEdit || !editForm.first_name?.trim() || !editForm.last_name?.trim()} className="btn-primary btn-sm">
+                {savingEdit ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label className="label">First Name *</label><input className="input-field" value={editForm.first_name || ""} onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })} /></div>
+              <div><label className="label">Last Name *</label><input className="input-field" value={editForm.last_name || ""} onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })} /></div>
+              <div><label className="label">Guardian / Parent</label><input className="input-field" placeholder="Miriam Cohen" value={editForm.guardian || ""} onChange={(e) => setEditForm({ ...editForm, guardian: e.target.value })} /></div>
+              <div><label className="label">Phone</label><input className="input-field" placeholder="732-555-0101" value={editForm.phone || ""} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} /></div>
+              <div><label className="label">Email</label><input className="input-field" type="email" value={editForm.email || ""} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} /></div>
+              <div><label className="label">Address</label><input className="input-field" value={editForm.address || ""} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} /></div>
+              <div>
+                <label className="label">Therapist</label>
+                <select className="input-field" value={editForm.therapist_id || ""} onChange={(e) => setEditForm({ ...editForm, therapist_id: e.target.value })}>
+                  <option value="">Select...</option>
+                  {allTherapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Service Type</label>
+                <select className="input-field" value={editForm.service_type_id || ""} onChange={(e) => setEditForm({ ...editForm, service_type_id: e.target.value })}>
+                  <option value="">Select...</option>
+                  {allServiceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div><label className="label">Start Date</label><input className="input-field" type="date" value={editForm.start_date || ""} onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })} /></div>
+            </div>
+
+            <div className="bg-surface-50 rounded-lg p-4">
+              <h4 className="font-semibold text-sm mb-3">Rates & Fees</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[
+                  { label: "Session Rate", key: "session_rate" as const },
+                  { label: "Late Cancel Fee", key: "late_cancel_fee" as const },
+                  { label: "No-Show Fee", key: "no_show_fee" as const },
+                ].map(({ label, key }) => (
+                  <div key={key}>
+                    <label className="label">{label}</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-ink-400 text-sm">$</span>
+                      <input className="input-field pl-7" type="number" step="0.01" placeholder="0.00"
+                        value={editForm[key] ?? ""}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value ? parseFloat(e.target.value) : null })} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Session Days</label>
+              <div className="flex flex-wrap gap-2">
+                {DAYS.map((day, i) => (
+                  <button key={i} type="button" onClick={() => toggleEditDay(i)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all ${
+                      (editForm.session_days || []).includes(i)
+                        ? "bg-brand-600 text-white border-brand-600"
+                        : "bg-white text-ink-500 border-surface-300 hover:border-brand-300"
+                    }`}>
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Notes</label>
+              <textarea className="input-field" rows={2} value={editForm.notes || ""} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
