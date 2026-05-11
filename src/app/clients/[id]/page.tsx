@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
 import { useUser } from "@/lib/user-context";
 import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal, Task } from "@/lib/types";
+import { ICD10_CODES } from "@/lib/icd10-codes";
 
 const NOTE_CATEGORIES = [
   { value: "general",   label: "General",    color: "badge-blue" },
@@ -270,16 +271,12 @@ export default function ClientDetailPage() {
             </div>
           )}
           {!isTherapist && (
-            <div className="flex items-center gap-1.5 mt-2">
-              <input
-                className="input-field py-1 text-xs w-28"
-                placeholder="ICD-10 code"
-                value={diagInput}
-                onChange={(e) => setDiagInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDiagCode(); } }}
-              />
-              <button onClick={addDiagCode} disabled={savingDiag || !diagInput.trim()} className="btn-outline btn-sm text-xs">Add</button>
-            </div>
+            <DiagCodeInput
+              value={diagInput}
+              onChange={setDiagInput}
+              onAdd={addDiagCode}
+              saving={savingDiag}
+            />
           )}
         </div>
         {!isTherapist && (
@@ -669,6 +666,53 @@ export default function ClientDetailPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Diagnosis Code Autocomplete ───────────────────────────────────────────────
+function DiagCodeInput({ value, onChange, onAdd, saving }: {
+  value: string;
+  onChange: (v: string) => void;
+  onAdd: () => void;
+  saving: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const matches = value.trim().length >= 2
+    ? ICD10_CODES.filter((c) =>
+        c.code.toLowerCase().includes(value.toLowerCase()) ||
+        c.description.toLowerCase().includes(value.toLowerCase())
+      ).slice(0, 10)
+    : [];
+
+  return (
+    <div className="relative mt-2" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+      <div className="flex items-center gap-1.5">
+        <input
+          className="input-field py-1 text-xs w-64"
+          placeholder="Search ICD-10 code or description..."
+          value={value}
+          onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAdd(); setOpen(false); } if (e.key === "Escape") setOpen(false); }}
+          onFocus={() => setOpen(true)}
+        />
+        <button onClick={() => { onAdd(); setOpen(false); }} disabled={saving || !value.trim()} className="btn-outline btn-sm text-xs flex-shrink-0">Add</button>
+      </div>
+      {open && matches.length > 0 && (
+        <div className="absolute z-50 top-full left-0 mt-1 w-96 bg-white border border-surface-200 rounded-xl shadow-lg overflow-hidden">
+          {matches.map((c) => (
+            <button
+              key={c.code}
+              tabIndex={0}
+              className="w-full text-left px-3 py-2 hover:bg-brand-50 flex items-center gap-3 border-b border-surface-100 last:border-0"
+              onMouseDown={(e) => { e.preventDefault(); onChange(c.code); onAdd(); setOpen(false); }}
+            >
+              <span className="font-mono text-xs font-bold text-brand-600 w-16 flex-shrink-0">{c.code}</span>
+              <span className="text-xs text-ink-600">{c.description}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>

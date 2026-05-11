@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { CPT_CODES } from "@/lib/cpt-codes";
 import { useAllTherapists, useAllServiceTypes } from "@/hooks";
 import { fmt, DAYS, DAYS_FULL } from "@/lib/utils";
 import type { Therapist, ServiceType, Fee, TherapistSchedule } from "@/lib/types";
@@ -228,7 +229,13 @@ function ServicesTab() {
               </select>
             </div>
             <div><label className="label">Default Rate *</label><input className="input-field" type="number" step="0.01" placeholder="125.00" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} /></div>
-            <div><label className="label">CPT Code</label><input className="input-field" placeholder="97530" value={form.cpt_code} onChange={(e) => setForm({ ...form, cpt_code: e.target.value })} /></div>
+            <div>
+              <label className="label">CPT Code</label>
+              <input className="input-field" placeholder="97530" list="cpt-list" value={form.cpt_code} onChange={(e) => setForm({ ...form, cpt_code: e.target.value })} />
+              <datalist id="cpt-list">
+                {CPT_CODES.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.description}</option>)}
+              </datalist>
+            </div>
           </div>
           <div className="flex gap-2">
             <button onClick={save} disabled={saving || !form.name.trim() || !form.rate} className="btn-primary btn-sm">
