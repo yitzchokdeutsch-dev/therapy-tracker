@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useClients, useTherapists, useServiceTypes, useFees, useSessions } from "@/hooks";
 import { useUpdateSessionStatus, useCreateSession, useUpdateSession, useDeleteSession } from "@/hooks/mutations";
 import { getSessionRate, getLateCancelFee, getNoShowFee } from "@/lib/fees";
@@ -21,6 +22,7 @@ const STATUS_OPTIONS = [
 
 export default function CheckInPage() {
   const today = todayStr();
+  const router = useRouter();
   const { role, therapistId } = useUser();
   const isTherapist = role === "therapist" && !!therapistId;
 
@@ -236,7 +238,12 @@ export default function CheckInPage() {
                         <div className="flex items-center gap-4 min-w-[200px]">
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold">{cl ? `${cl.first_name} ${cl.last_name}` : "Unknown"}</span>
+                              <button
+                                onClick={() => router.push(`/clients/${s.client_id}`)}
+                                className="font-semibold text-brand-600 hover:text-brand-800 hover:underline text-left"
+                              >
+                                {cl ? `${cl.first_name} ${cl.last_name}` : "Unknown"}
+                              </button>
                               {s.session_time && <span className="text-xs text-ink-400">{s.session_time}</span>}
                               <button
                                 onClick={() => {

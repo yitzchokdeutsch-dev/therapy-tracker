@@ -54,24 +54,28 @@ export async function dbUpdateSessionStatus(
     details: { status, charge_amount: charge?.amount },
   });
 
-  // Auto-create a SOAP note reminder task when session is attended
+  // Auto-create a SOAP note reminder task — wrapped so it never breaks the main flow
   if (status === "attended") {
-    const { data: session } = await supabase
-      .from("sessions").select("client_id, session_date").eq("id", sessionId).single();
-    const { data: client } = session?.client_id
-      ? await supabase.from("clients").select("first_name, last_name").eq("id", session.client_id).single()
-      : { data: null };
-    const { count } = await supabase
-      .from("session_notes").select("*", { count: "exact", head: true })
-      .eq("session_id", sessionId);
-    if (count === 0 && session && client) {
-      await supabase.from("tasks").insert({
-        client_id: session.client_id,
-        session_id: sessionId,
-        title: `Write SOAP note — ${client.first_name} ${client.last_name} (${session.session_date})`,
-        task_type: "soap_note",
-        due_date: session.session_date,
-      });
+    try {
+      const { data: session } = await supabase
+        .from("sessions").select("client_id, session_date").eq("id", sessionId).single();
+      const { data: client } = session?.client_id
+        ? await supabase.from("clients").select("first_name, last_name").eq("id", session.client_id).single()
+        : { data: null };
+      const { count } = await supabase
+        .from("session_notes").select("*", { count: "exact", head: true })
+        .eq("session_id", sessionId);
+      if ((count ?? 0) === 0 && session && client) {
+        await supabase.from("tasks").insert({
+          client_id: session.client_id,
+          session_id: sessionId,
+          title: `Write SOAP note — ${client.first_name} ${client.last_name} (${session.session_date})`,
+          task_type: "soap_note",
+          due_date: session.session_date,
+        });
+      }
+    } catch {
+      // Task creation is non-critical — never crash the status update
     }
   }
 }
