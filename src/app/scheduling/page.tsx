@@ -367,7 +367,7 @@ export default function SchedulingPage() {
                     <span className="text-sm font-semibold text-ink-600 w-8 pt-2 flex-shrink-0">{DAYS[d.day]}</span>
                     <div className="flex-1 min-w-0">
                       {slots.length > 0 ? (
-                        <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                        <div className="flex flex-wrap gap-1.5">
                           {slots.map((slot) => (
                             <button
                               key={slot}
@@ -480,7 +480,7 @@ export default function SchedulingPage() {
             ) : oneForm.therapist_id && oneForm.date && oneForm.service_type_id ? (
               availableSlots.length > 0 ? (
                 <div>
-                  <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar mb-2">
+                  <div className="flex flex-wrap gap-1.5 mb-2">
                     {availableSlots.map((slot) => (
                       <button
                         key={slot}
