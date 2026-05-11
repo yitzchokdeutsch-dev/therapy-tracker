@@ -27,6 +27,12 @@ interface ServiceType {
   duration: number;
 }
 
+interface SoapNote {
+  session_id: string | null;
+  session_date: string;
+  cpt_codes: { code: string; description: string; units: number }[];
+}
+
 export default function SuperbillPage() {
   const [selectedClient, setSelectedClient] = useState("");
   const [billingMonth, setBillingMonth]     = useState(() => {
@@ -37,6 +43,7 @@ export default function SuperbillPage() {
   const [client,       setClient]       = useState<Client | null>(null);
   const [charges,      setCharges]      = useState<Charge[]>([]);
   const [sessions,     setSessions]     = useState<Session[]>([]);
+  const [soapNotes,    setSoapNotes]    = useState<SoapNote[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [settings,     setSettings]     = useState<Record<string, string>>({});
   const [loading,      setLoading]      = useState(false);
@@ -66,30 +73,64 @@ export default function SuperbillPage() {
     const start  = `${billingMonth}-01`;
     const end    = `${billingMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
 
-    const [clientRes, chargesRes, sessionsRes] = await Promise.all([
+    const [clientRes, chargesRes, sessionsRes, soapRes] = await Promise.all([
       supabase.from("clients").select("*").eq("id", selectedClient).single(),
       supabase.from("charges").select("*").eq("client_id", selectedClient)
         .gte("charge_date", start).lte("charge_date", end).is("deleted_at", null).order("charge_date"),
       supabase.from("sessions").select("id, service_type_id, session_time")
         .eq("client_id", selectedClient).gte("session_date", start).lte("session_date", end)
         .eq("status", "attended").is("deleted_at", null),
+      supabase.from("session_notes").select("session_id, session_date, cpt_codes")
+        .eq("client_id", selectedClient).gte("session_date", start).lte("session_date", end),
     ]);
 
     setClient(clientRes.data);
     setCharges(chargesRes.data || []);
     setSessions(sessionsRes.data || []);
+    setSoapNotes(soapRes.data || []);
     setLoading(false);
   };
 
   const g = (key: string) => settings[key] || "";
   const getSvc = (id: string) => serviceTypes.find((s) => s.id === id);
-  const getSvcForCharge = (charge: Charge) => {
-    const session = sessions.find((s) => s.id === charge.session_id);
-    return session ? getSvc(session.service_type_id) : null;
-  };
 
-  const total        = charges.reduce((s, c) => s + Number(c.amount), 0);
-  const monthLabel   = new Date(billingMonth + "-15").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  // Build superbill line items: expand SOAP CPT codes into rows
+  const lineItems = charges.map((charge) => {
+    const session  = sessions.find((s) => s.id === charge.session_id);
+    const soapNote = soapNotes.find((n) =>
+      (charge.session_id && n.session_id === charge.session_id) ||
+      n.session_date === charge.charge_date
+    );
+    const svc = session ? getSvc(session.service_type_id) : null;
+
+    if (soapNote?.cpt_codes?.length) {
+      // Return one row per CPT code, fee split evenly
+      const totalUnits = soapNote.cpt_codes.reduce((s, c) => s + c.units, 0);
+      return soapNote.cpt_codes.map((cpt, i) => ({
+        date:        charge.charge_date,
+        cpt_code:    cpt.code,
+        description: cpt.description,
+        units:       cpt.units,
+        diagnosis:   (client?.diagnosis_codes || [])[0] || "—",
+        fee:         i === 0 ? Number(charge.amount) : 0, // full fee on first code, $0 on extras
+        chargeId:    charge.id + "-" + i,
+      }));
+    }
+
+    // No SOAP note — fall back to single line with service type CPT
+    return [{
+      date:        charge.charge_date,
+      cpt_code:    svc?.cpt_code || "—",
+      description: charge.description + (svc ? ` (${svc.duration} min)` : ""),
+      units:       svc ? Math.round(svc.duration / 15) : 1,
+      diagnosis:   (client?.diagnosis_codes || [])[0] || "—",
+      fee:         Number(charge.amount),
+      chargeId:    charge.id,
+    }];
+  }).flat();
+
+  const total      = charges.reduce((s, c) => s + Number(c.amount), 0);
+  const monthLabel = new Date(billingMonth + "-15").toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   return (
     <div>
@@ -189,26 +230,25 @@ export default function SuperbillPage() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b-2 border-ink-900">
-                  <th className="text-left py-2 font-semibold">Date</th>
+                  <th className="text-left py-2 font-semibold">Date of Service</th>
                   <th className="text-left py-2 font-semibold">CPT Code</th>
                   <th className="text-left py-2 font-semibold">Service Description</th>
-                  <th className="text-left py-2 font-semibold">Diagnosis</th>
+                  <th className="text-center py-2 font-semibold">Units</th>
+                  <th className="text-left py-2 font-semibold">Dx (ICD-10)</th>
                   <th className="text-right py-2 font-semibold">Fee</th>
                 </tr>
               </thead>
               <tbody>
-                {charges.map((c) => {
-                  const svc = getSvcForCharge(c);
-                  return (
-                    <tr key={c.id} className="border-b border-surface-200">
-                      <td className="py-2 whitespace-nowrap">{c.charge_date}</td>
-                      <td className="py-2 font-mono">{svc?.cpt_code || "—"}</td>
-                      <td className="py-2">{c.description}{svc ? ` (${svc.duration} min)` : ""}</td>
-                      <td className="py-2 font-mono text-xs">{client.diagnosis_codes?.[0] || "—"}</td>
-                      <td className="py-2 text-right font-semibold">{fmt(Number(c.amount))}</td>
-                    </tr>
-                  );
-                })}
+                {lineItems.map((row) => (
+                  <tr key={row.chargeId} className="border-b border-surface-200">
+                    <td className="py-2 whitespace-nowrap">{row.date}</td>
+                    <td className="py-2 font-mono font-semibold">{row.cpt_code}</td>
+                    <td className="py-2">{row.description}</td>
+                    <td className="py-2 text-center">{row.units}</td>
+                    <td className="py-2 font-mono text-xs">{row.diagnosis}</td>
+                    <td className="py-2 text-right font-semibold">{row.fee > 0 ? fmt(row.fee) : "—"}</td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-ink-900">

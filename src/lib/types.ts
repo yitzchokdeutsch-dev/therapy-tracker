@@ -117,6 +117,12 @@ export interface ClientFile {
   created_at: string;
 }
 
+export interface SoapCptCode {
+  code: string;
+  description: string;
+  units: number;
+}
+
 export interface SessionNote {
   id: string;
   client_id: string;
@@ -128,6 +134,7 @@ export interface SessionNote {
   assessment: string | null;
   plan: string | null;
   goals_addressed: string[];
+  cpt_codes: SoapCptCode[];
   created_at: string;
   updated_at: string;
 }

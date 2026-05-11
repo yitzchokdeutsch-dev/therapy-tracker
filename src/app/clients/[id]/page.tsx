@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
 import { useUser } from "@/lib/user-context";
-import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal, Task } from "@/lib/types";
+import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal, Task, SoapCptCode } from "@/lib/types";
 import { ICD10_CODES } from "@/lib/icd10-codes";
+import { CPT_CODES } from "@/lib/cpt-codes";
 
 const NOTE_CATEGORIES = [
   { value: "general",   label: "General",    color: "badge-blue" },
@@ -65,7 +66,9 @@ export default function ClientDetailPage() {
     session_date: new Date().toISOString().split("T")[0],
     subjective: "", objective: "", assessment: "", plan: "",
   });
-  const [savingSoap, setSavingSoap] = useState(false);
+  const [soapCptCodes, setSoapCptCodes] = useState<SoapCptCode[]>([]);
+  const [cptSearch, setCptSearch]       = useState("");
+  const [savingSoap, setSavingSoap]     = useState(false);
   const [expandedSoap, setExpandedSoap] = useState<string | null>(null);
 
   // Goal form
@@ -137,15 +140,23 @@ export default function ClientDetailPage() {
   const saveSoap = async () => {
     if (!soapForm.session_date) return;
     setSavingSoap(true);
-    const payload = { client_id: clientId, session_date: soapForm.session_date, subjective: soapForm.subjective.trim() || null, objective: soapForm.objective.trim() || null, assessment: soapForm.assessment.trim() || null, plan: soapForm.plan.trim() || null, updated_at: new Date().toISOString() };
+    const payload = {
+      client_id: clientId,
+      session_date: soapForm.session_date,
+      subjective:  soapForm.subjective.trim()  || null,
+      objective:   soapForm.objective.trim()   || null,
+      assessment:  soapForm.assessment.trim()  || null,
+      plan:        soapForm.plan.trim()        || null,
+      cpt_codes:   soapCptCodes,
+      updated_at:  new Date().toISOString(),
+    };
     if (editSoapId) { await supabase.from("session_notes").update(payload).eq("id", editSoapId); }
     else            { await supabase.from("session_notes").insert(payload); }
-    // Mark matching SOAP task complete
     if (!editSoapId) {
       await supabase.from("tasks").update({ completed_at: new Date().toISOString() })
         .eq("client_id", clientId).eq("task_type", "soap_note").eq("due_date", soapForm.session_date).is("completed_at", null);
     }
-    setSavingSoap(false); setShowSoapForm(false); load();
+    setSavingSoap(false); setShowSoapForm(false); setSoapCptCodes([]); load();
   };
   const deleteSoap = async (id: string) => {
     if (!confirm("Delete this SOAP note?")) return;
@@ -342,7 +353,7 @@ export default function ClientDetailPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-ink-500">{soapNotes.length} note{soapNotes.length !== 1 ? "s" : ""}</div>
-            <button onClick={() => { setSoapForm({ session_date: new Date().toISOString().split("T")[0], subjective: "", objective: "", assessment: "", plan: "" }); setEditSoapId(null); setShowSoapForm(true); }} className="btn-primary btn-sm">
+            <button onClick={() => { setSoapForm({ session_date: new Date().toISOString().split("T")[0], subjective: "", objective: "", assessment: "", plan: "" }); setSoapCptCodes([]); setCptSearch(""); setEditSoapId(null); setShowSoapForm(true); }} className="btn-primary btn-sm">
               + New SOAP Note
             </button>
           </div>
@@ -369,6 +380,90 @@ export default function ClientDetailPage() {
                   </div>
                 ))}
               </div>
+              {/* CPT Code Picker */}
+              <div className="bg-surface-50 rounded-xl p-4">
+                <div className="font-semibold text-sm mb-3">
+                  CPT Codes Billed
+                  {soapCptCodes.length > 0 && (
+                    <span className="ml-2 text-xs font-normal text-ink-400">
+                      {soapCptCodes.reduce((s, c) => s + c.units, 0)} unit{soapCptCodes.reduce((s, c) => s + c.units, 0) !== 1 ? "s" : ""} total
+                      {" "}({soapCptCodes.reduce((s, c) => s + c.units, 0) * 15} min)
+                    </span>
+                  )}
+                </div>
+
+                {/* Quick-add common pediatric OT codes */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {["97530","97533","97110","97535","97112","97165","97166","97167","97168","97150"].map((code) => {
+                    const cpt = CPT_CODES.find((c) => c.code === code);
+                    if (!cpt) return null;
+                    const already = soapCptCodes.some((c) => c.code === code);
+                    return (
+                      <button
+                        key={code}
+                        onClick={() => {
+                          if (already) return;
+                          setSoapCptCodes([...soapCptCodes, { code: cpt.code, description: cpt.description, units: 1 }]);
+                        }}
+                        disabled={already}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${already ? "bg-brand-100 text-brand-600 border-brand-200 cursor-default" : "bg-white text-ink-600 border-surface-300 hover:border-brand-400 hover:text-brand-600"}`}
+                        title={cpt.description}
+                      >
+                        {code}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Search any CPT code */}
+                <div className="relative mb-3">
+                  <input
+                    className="input-field py-1.5 text-sm w-full"
+                    placeholder="Search other CPT code..."
+                    value={cptSearch}
+                    onChange={(e) => setCptSearch(e.target.value)}
+                  />
+                  {cptSearch.length >= 2 && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-surface-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {CPT_CODES.filter((c) =>
+                        (c.code.includes(cptSearch) || c.description.toLowerCase().includes(cptSearch.toLowerCase())) &&
+                        !soapCptCodes.some((s) => s.code === c.code)
+                      ).map((c) => (
+                        <button key={c.code} className="w-full text-left px-3 py-2 hover:bg-brand-50 flex items-center gap-3 border-b border-surface-100 last:border-0"
+                          onMouseDown={(e) => { e.preventDefault(); setSoapCptCodes([...soapCptCodes, { code: c.code, description: c.description, units: 1 }]); setCptSearch(""); }}>
+                          <span className="font-mono text-xs font-bold text-brand-600 w-14 flex-shrink-0">{c.code}</span>
+                          <span className="text-xs text-ink-600">{c.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected codes with unit counter */}
+                {soapCptCodes.length > 0 && (
+                  <div className="space-y-2">
+                    {soapCptCodes.map((c, i) => (
+                      <div key={c.code} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-surface-200">
+                        <span className="font-mono text-sm font-bold text-brand-600 w-14 flex-shrink-0">{c.code}</span>
+                        <span className="text-xs text-ink-600 flex-1">{c.description}</span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className="text-xs text-ink-400">Units:</span>
+                          <button onClick={() => setSoapCptCodes(soapCptCodes.map((x, j) => j === i ? { ...x, units: Math.max(1, x.units - 1) } : x))} className="w-6 h-6 rounded border border-surface-300 text-sm font-bold hover:bg-surface-100 flex items-center justify-center">−</button>
+                          <span className="w-5 text-center text-sm font-bold">{c.units}</span>
+                          <button onClick={() => setSoapCptCodes(soapCptCodes.map((x, j) => j === i ? { ...x, units: Math.min(8, x.units + 1) } : x))} className="w-6 h-6 rounded border border-surface-300 text-sm font-bold hover:bg-surface-100 flex items-center justify-center">+</button>
+                          <span className="text-xs text-ink-400 w-12">{c.units * 15} min</span>
+                          <button onClick={() => setSoapCptCodes(soapCptCodes.filter((_, j) => j !== i))} className="text-ink-300 hover:text-red-400 ml-1">×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {soapCptCodes.length === 0 && (
+                  <div className="text-xs text-ink-400 italic">Click codes above or search to add CPT codes for this session.</div>
+                )}
+              </div>
+
               <div className="flex gap-2 mt-4">
                 <button onClick={saveSoap} disabled={savingSoap || !soapForm.session_date} className="btn-primary btn-sm">
                   {savingSoap ? "Saving..." : editSoapId ? "Update Note" : "Save Note"}
@@ -417,8 +512,25 @@ export default function ClientDetailPage() {
                             </div>
                           ))}
                         </div>
+                        {n.cpt_codes?.length > 0 && (
+                          <div className="mt-4">
+                            <div className="text-xs font-bold text-ink-500 uppercase tracking-wide mb-2">CPT Codes Billed</div>
+                            <div className="flex flex-wrap gap-2">
+                              {n.cpt_codes.map((c) => (
+                                <div key={c.code} className="flex items-center gap-1.5 bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5">
+                                  <span className="font-mono text-xs font-bold text-brand-700">{c.code}</span>
+                                  <span className="text-xs text-ink-600">× {c.units} unit{c.units !== 1 ? "s" : ""}</span>
+                                  <span className="text-xs text-ink-400">({c.units * 15} min)</span>
+                                </div>
+                              ))}
+                              <div className="text-xs text-ink-400 self-center">
+                                = {n.cpt_codes.reduce((s, c) => s + c.units, 0) * 15} min total
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex gap-2 mt-3">
-                          <button onClick={() => { setSoapForm({ session_date: n.session_date, subjective: n.subjective || "", objective: n.objective || "", assessment: n.assessment || "", plan: n.plan || "" }); setEditSoapId(n.id); setShowSoapForm(true); }} className="btn-ghost btn-sm">Edit</button>
+                          <button onClick={() => { setSoapForm({ session_date: n.session_date, subjective: n.subjective || "", objective: n.objective || "", assessment: n.assessment || "", plan: n.plan || "" }); setSoapCptCodes(n.cpt_codes || []); setEditSoapId(n.id); setShowSoapForm(true); }} className="btn-ghost btn-sm">Edit</button>
                           <button onClick={() => deleteSoap(n.id)} className="btn-ghost btn-sm text-red-500">Delete</button>
                         </div>
                       </div>
