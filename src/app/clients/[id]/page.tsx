@@ -8,6 +8,7 @@ import { useUser } from "@/lib/user-context";
 import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal, Task, SoapCptCode } from "@/lib/types";
 import { ICD10_CODES } from "@/lib/icd10-codes";
 import { CPT_CODES } from "@/lib/cpt-codes";
+import { INSURANCE_COMPANIES } from "@/lib/insurance-companies";
 
 const NOTE_CATEGORIES = [
   { value: "general",   label: "General",    color: "badge-blue" },
@@ -1011,10 +1012,10 @@ function InsuranceTab({ client, clientId, onSaved }: { client: Client; clientId:
     onSaved();
   };
 
-  const f = (key: keyof typeof form, label: string, type = "text", hint?: string) => (
+  const f = (key: keyof typeof form, label: string, type = "text", hint?: string, listId?: string) => (
     <div key={key}>
       <label className="label">{label}</label>
-      <input className="input-field" type={type} value={form[key]}
+      <input className="input-field" type={type} value={form[key]} list={listId}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
       {hint && <div className="text-xs text-ink-400 mt-1">{hint}</div>}
     </div>
@@ -1028,8 +1029,12 @@ function InsuranceTab({ client, clientId, onSaved }: { client: Client; clientId:
           {saving ? "Saving..." : saved ? "✓ Saved" : "Save"}
         </button>
       </div>
+      <datalist id="insurance-list">
+        {INSURANCE_COMPANIES.map((name) => <option key={name} value={name} />)}
+      </datalist>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {f("insurance_company", "Insurance Company")}
+        {f("insurance_company", "Insurance Company", "text", undefined, "insurance-list")}
         {f("policy_number",     "Policy Number")}
         {f("group_number",      "Group Number")}
         {f("subscriber_name",   "Subscriber Name", "text", "Name on the insurance card")}
