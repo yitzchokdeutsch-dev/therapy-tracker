@@ -86,15 +86,17 @@ export function useBalances() {
         .select("client_id, balance");
 
       if (error) {
-        const [{ data: charges }, { data: payments }] = await Promise.all([
-          supabase.from("charges").select("client_id, amount").is("deleted_at", null),
-          supabase.from("payments").select("client_id, amount").is("deleted_at", null),
+        const [{ data: rawCharges }, { data: rawPayments }] = await Promise.all([
+          supabase.from("charges").select("client_id, amount, deleted_at"),
+          supabase.from("payments").select("client_id, amount, deleted_at"),
         ]);
+        const charges  = (rawCharges  ?? []).filter((c: any) => !c.deleted_at);
+        const payments = (rawPayments ?? []).filter((p: any) => !p.deleted_at);
         const bals: Record<string, number> = {};
-        (charges ?? []).forEach((c: Pick<Charge, "client_id" | "amount">) => {
+        charges.forEach((c: Pick<Charge, "client_id" | "amount">) => {
           bals[c.client_id] = (bals[c.client_id] ?? 0) + Number(c.amount);
         });
-        (payments ?? []).forEach((p: Pick<Payment, "client_id" | "amount">) => {
+        payments.forEach((p: Pick<Payment, "client_id" | "amount">) => {
           bals[p.client_id] = (bals[p.client_id] ?? 0) - Number(p.amount);
         });
         return bals;
@@ -117,9 +119,8 @@ export function useSessions(dateStr: string) {
       const { data } = await supabase
         .from("sessions").select("*")
         .eq("session_date", dateStr)
-        .is("deleted_at", null)
         .order("session_time");
-      return (data ?? []) as Session[];
+      return (data ?? []).filter((s: any) => !s.deleted_at) as Session[];
     },
     staleTime: 15_000,
   });
@@ -137,9 +138,8 @@ export function useSessionsForMonth(year: number, month: number) {
         .from("sessions").select("*")
         .gte("session_date", startDate)
         .lte("session_date", endDate)
-        .is("deleted_at", null)
         .order("session_time");
-      return (data ?? []) as Session[];
+      return (data ?? []).filter((s: any) => !s.deleted_at) as Session[];
     },
     staleTime: 15_000,
   });
@@ -166,9 +166,8 @@ export function usePaymentsForMonth(filterMonth: string) {
         .from("payments").select("*")
         .gte("payment_date", filterMonth + "-01")
         .lte("payment_date", monthEnd)
-        .is("deleted_at", null)
         .order("payment_date", { ascending: false });
-      return (data ?? []) as Payment[];
+      return (data ?? []).filter((p: any) => !p.deleted_at) as Payment[];
     },
     staleTime: 15_000,
     placeholderData: keepPreviousData,

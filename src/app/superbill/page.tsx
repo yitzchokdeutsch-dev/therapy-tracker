@@ -76,7 +76,7 @@ export default function SuperbillPage() {
     const [clientRes, chargesRes, sessionsRes, soapRes] = await Promise.all([
       supabase.from("clients").select("*").eq("id", selectedClient).single(),
       supabase.from("charges").select("*").eq("client_id", selectedClient)
-        .gte("charge_date", start).lte("charge_date", end).is("deleted_at", null).order("charge_date"),
+        .gte("charge_date", start).lte("charge_date", end).order("charge_date"),
       supabase.from("sessions").select("id, service_type_id, session_time")
         .eq("client_id", selectedClient).gte("session_date", start).lte("session_date", end)
         .eq("status", "attended").is("deleted_at", null),
@@ -85,7 +85,7 @@ export default function SuperbillPage() {
     ]);
 
     setClient(clientRes.data);
-    setCharges(chargesRes.data || []);
+    setCharges((chargesRes.data || []).filter((r: any) => !r.deleted_at));
     setSessions(sessionsRes.data || []);
     setSoapNotes(soapRes.data || []);
     setLoading(false);

@@ -96,8 +96,8 @@ export default function ClientDetailPage() {
     const [notesRes, filesRes, chargesRes, paymentsRes, soapRes, goalsRes] = await Promise.all([
       supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
       supabase.from("client_files").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
-      supabase.from("charges").select("amount").eq("client_id", clientId).is("deleted_at", null),
-      supabase.from("payments").select("amount").eq("client_id", clientId).is("deleted_at", null),
+      supabase.from("charges").select("amount, deleted_at").eq("client_id", clientId),
+      supabase.from("payments").select("amount, deleted_at").eq("client_id", clientId),
       supabase.from("session_notes").select("*").eq("client_id", clientId).order("session_date", { ascending: false }),
       supabase.from("goals").select("*").eq("client_id", clientId).order("created_at"),
     ]);
@@ -107,8 +107,8 @@ export default function ClientDetailPage() {
     setSoapNotes(soapRes.data || []);
     setGoals(goalsRes.data || []);
 
-    const totalCharges  = (chargesRes.data  || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-    const totalPayments = (paymentsRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+    const totalCharges  = (chargesRes.data  || []).filter((r: any) => !r.deleted_at).reduce((s: number, r: any) => s + Number(r.amount), 0);
+    const totalPayments = (paymentsRes.data || []).filter((r: any) => !r.deleted_at).reduce((s: number, r: any) => s + Number(r.amount), 0);
     setBalance(totalCharges - totalPayments);
 
     const [tRes, sRes] = await Promise.all([

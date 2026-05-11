@@ -23,15 +23,15 @@ export default function BillingPage() {
     const [y, m] = billingMonth.split("-").map(Number);
     const monthEnd = `${billingMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
     const [chRes, pRes, achRes, apRes] = await Promise.all([
-      supabase.from("charges").select("*").gte("charge_date", billingMonth + "-01").lte("charge_date", monthEnd).is("deleted_at", null).order("charge_date"),
-      supabase.from("payments").select("*").gte("payment_date", billingMonth + "-01").lte("payment_date", monthEnd).is("deleted_at", null).order("payment_date"),
-      supabase.from("charges").select("*").lt("charge_date", billingMonth + "-01").is("deleted_at", null).order("charge_date"),
-      supabase.from("payments").select("*").lt("payment_date", billingMonth + "-01").is("deleted_at", null).order("payment_date"),
+      supabase.from("charges").select("*").gte("charge_date", billingMonth + "-01").lte("charge_date", monthEnd).order("charge_date"),
+      supabase.from("payments").select("*").gte("payment_date", billingMonth + "-01").lte("payment_date", monthEnd).order("payment_date"),
+      supabase.from("charges").select("*").lt("charge_date", billingMonth + "-01").order("charge_date"),
+      supabase.from("payments").select("*").lt("payment_date", billingMonth + "-01").order("payment_date"),
     ]);
-    setCharges(chRes.data || []);
-    setPayments(pRes.data || []);
-    setPrevCharges(achRes.data || []);
-    setPrevPayments(apRes.data || []);
+    setCharges((chRes.data || []).filter((r: any) => !r.deleted_at));
+    setPayments((pRes.data || []).filter((r: any) => !r.deleted_at));
+    setPrevCharges((achRes.data || []).filter((r: any) => !r.deleted_at));
+    setPrevPayments((apRes.data || []).filter((r: any) => !r.deleted_at));
     setLoadingBilling(false);
   }, [billingMonth]);
 

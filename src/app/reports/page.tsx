@@ -63,14 +63,16 @@ export default function ReportsPage() {
 
     // Sessions for last 6 months
     const sixMonthsAgo = months[0] + "-01";
-    const { data: sessions } = await supabase
-      .from("sessions").select("session_date, status, therapist_id")
-      .gte("session_date", sixMonthsAgo)
-      .is("deleted_at", null);
+    const { data: rawSessions } = await supabase
+      .from("sessions").select("session_date, status, therapist_id, deleted_at")
+      .gte("session_date", sixMonthsAgo);
+    const sessions = (rawSessions ?? []).filter((s: any) => !s.deleted_at);
 
     // Charges + payments for last 6 months
-    const { data: charges  } = await supabase.from("charges").select("charge_date, amount").gte("charge_date", sixMonthsAgo).is("deleted_at", null);
-    const { data: payments } = await supabase.from("payments").select("payment_date, amount").gte("payment_date", sixMonthsAgo).is("deleted_at", null);
+    const { data: rawCharges  } = await supabase.from("charges").select("charge_date, amount, deleted_at").gte("charge_date", sixMonthsAgo);
+    const { data: rawPayments } = await supabase.from("payments").select("payment_date, amount, deleted_at").gte("payment_date", sixMonthsAgo);
+    const charges  = (rawCharges  ?? []).filter((r: any) => !r.deleted_at);
+    const payments = (rawPayments ?? []).filter((r: any) => !r.deleted_at);
 
     // Month stats
     const mStats: MonthStat[] = months.map((m) => {
@@ -105,8 +107,10 @@ export default function ReportsPage() {
 
     // Balance aging
     const now = new Date();
-    const { data: allCharges  } = await supabase.from("charges").select("client_id, charge_date, amount").is("deleted_at", null);
-    const { data: allPayments } = await supabase.from("payments").select("client_id, amount").is("deleted_at", null);
+    const { data: rawAllCharges  } = await supabase.from("charges").select("client_id, charge_date, amount, deleted_at");
+    const { data: rawAllPayments } = await supabase.from("payments").select("client_id, amount, deleted_at");
+    const allCharges  = (rawAllCharges  ?? []).filter((r: any) => !r.deleted_at);
+    const allPayments = (rawAllPayments ?? []).filter((r: any) => !r.deleted_at);
 
     const agingRows: AgingRow[] = clients
       .filter((c) => c.active)
