@@ -15,6 +15,17 @@ export interface Client {
   session_rate: number | null;
   late_cancel_fee: number | null;
   no_show_fee: number | null;
+  // Insurance
+  insurance_company: string | null;
+  policy_number: string | null;
+  group_number: string | null;
+  subscriber_name: string | null;
+  subscriber_dob: string | null;
+  auth_number: string | null;
+  authorized_visits: number | null;
+  auth_expiration: string | null;
+  // Clinical
+  diagnosis_codes: string[];
 }
 
 export interface Therapist {
@@ -43,6 +54,7 @@ export interface Session {
   session_time: string;
   status: string;
   notes: string;
+  deleted_at?: string | null;
 }
 
 export interface Fee {
@@ -59,6 +71,7 @@ export interface Charge {
   charge_date: string;
   description: string;
   amount: number;
+  deleted_at?: string | null;
 }
 
 export interface Payment {
@@ -70,6 +83,7 @@ export interface Payment {
   reference: string;
   notes: string;
   created_at: string;
+  deleted_at?: string | null;
 }
 
 export interface TherapistSchedule {
@@ -100,5 +114,44 @@ export interface ClientFile {
   storage_path: string;
   category: string;
   notes: string;
+  created_at: string;
+}
+
+export interface SessionNote {
+  id: string;
+  client_id: string;
+  session_id: string | null;
+  therapist_id: string | null;
+  session_date: string;
+  subjective: string | null;
+  objective: string | null;
+  assessment: string | null;
+  plan: string | null;
+  goals_addressed: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Goal {
+  id: string;
+  client_id: string;
+  description: string;
+  category: string;
+  target_date: string | null;
+  status: "active" | "mastered" | "discontinued";
+  progress: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Task {
+  id: string;
+  client_id: string | null;
+  session_id: string | null;
+  title: string;
+  task_type: "soap_note" | "auth_expiring" | "custom";
+  due_date: string | null;
+  completed_at: string | null;
   created_at: string;
 }

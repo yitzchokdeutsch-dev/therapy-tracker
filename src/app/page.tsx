@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTherapists, useServiceTypes, useClients, useBalances, useSessions } from "@/hooks";
@@ -13,11 +13,17 @@ export default function DashboardPage() {
   const router = useRouter();
   const { role, therapistId } = useUser();
   const isTherapist = role === "therapist" && !!therapistId;
+  const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
 
   // Therapists live in the calendar, not the dashboard
   useEffect(() => {
     if (role === "therapist") router.replace("/calendar");
   }, [role, router]);
+
+  useEffect(() => {
+    supabase.from("tasks").select("*", { count: "exact", head: true }).is("completed_at", null)
+      .then(({ count }) => setOpenTaskCount(count ?? 0));
+  }, []);
 
   const today = new Date();
   const date = todayStr();
@@ -82,14 +88,22 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <div className="text-sm text-ink-500 mt-0.5">{displayDate}</div>
         </div>
-        <button onClick={() => router.push("/checkin")} className="btn-primary">
-          Open Check-In &rarr;
-        </button>
+        <div className="flex items-center gap-2">
+          {openTaskCount !== null && openTaskCount > 0 && (
+            <button onClick={() => router.push("/tasks")} className="btn-outline btn-sm relative">
+              ☑ Tasks
+              <span className="ml-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{openTaskCount}</span>
+            </button>
+          )}
+          <button onClick={() => router.push("/checkin")} className="btn-primary">
+            Open Check-In &rarr;
+          </button>
+        </div>
       </div>
 
       <div className={`grid gap-4 mb-6 ${isTherapist ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"}`}>

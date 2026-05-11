@@ -12,8 +12,10 @@ const nav = [
   { href: "/scheduling", label: "Scheduling",icon: "☰" },
   { href: "/checkin",    label: "Check-In",  icon: "✓" },
   { href: "/calendar",   label: "Calendar",  icon: "▦" },
+  { href: "/tasks",      label: "Tasks",     icon: "☑" },
   { href: "/payments",   label: "Payments",  icon: "$" },
   { href: "/billing",    label: "Billing",   icon: "◧" },
+  { href: "/reports",    label: "Reports",   icon: "▤" },
   { href: "/setup",      label: "Setup",     icon: "⚙" },
   { href: "/admin",      label: "Admin",     icon: "◈" },
 ];

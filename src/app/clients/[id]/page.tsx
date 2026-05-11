@@ -5,25 +5,32 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { fmt, formatDate, formatDateTime, DAYS } from "@/lib/utils";
 import { useUser } from "@/lib/user-context";
-import type { Client, Therapist, ServiceType, ClientNote, ClientFile } from "@/lib/types";
+import type { Client, Therapist, ServiceType, ClientNote, ClientFile, SessionNote, Goal } from "@/lib/types";
 
 const NOTE_CATEGORIES = [
-  { value: "general", label: "General", color: "badge-blue" },
-  { value: "evaluation", label: "Evaluation", color: "badge-amber" },
-  { value: "session", label: "Session", color: "badge-green" },
-  { value: "billing", label: "Billing", color: "badge-red" },
-  { value: "insurance", label: "Insurance", color: "badge-gray" },
-  { value: "other", label: "Other", color: "badge-gray" },
+  { value: "general",   label: "General",    color: "badge-blue" },
+  { value: "evaluation",label: "Evaluation", color: "badge-amber" },
+  { value: "session",   label: "Session",    color: "badge-green" },
+  { value: "billing",   label: "Billing",    color: "badge-red" },
+  { value: "insurance", label: "Insurance",  color: "badge-gray" },
+  { value: "other",     label: "Other",      color: "badge-gray" },
 ];
 
 const FILE_CATEGORIES = [
   { value: "evaluation", label: "Evaluation" },
-  { value: "insurance", label: "Insurance" },
-  { value: "medical", label: "Medical" },
-  { value: "consent", label: "Consent" },
-  { value: "report", label: "Report" },
-  { value: "other", label: "Other" },
+  { value: "insurance",  label: "Insurance" },
+  { value: "medical",    label: "Medical" },
+  { value: "consent",    label: "Consent" },
+  { value: "report",     label: "Report" },
+  { value: "other",      label: "Other" },
 ];
+
+const GOAL_CATEGORIES = [
+  "Fine Motor", "Gross Motor", "Sensory Processing", "Self-Care / ADL",
+  "Cognitive", "Social-Emotional", "Communication", "Other",
+];
+
+type Tab = "soap" | "goals" | "insurance" | "notes" | "files";
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -32,43 +39,76 @@ export default function ClientDetailPage() {
   const isTherapist = role === "therapist";
   const clientId = params.id as string;
 
-  const [client, setClient] = useState<Client | null>(null);
+  const [client, setClient]       = useState<Client | null>(null);
   const [therapist, setTherapist] = useState<Therapist | null>(null);
   const [serviceType, setServiceType] = useState<ServiceType | null>(null);
-  const [notes, setNotes] = useState<ClientNote[]>([]);
-  const [files, setFiles] = useState<ClientFile[]>([]);
-  const [balance, setBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [notes, setNotes]         = useState<ClientNote[]>([]);
+  const [files, setFiles]         = useState<ClientFile[]>([]);
+  const [soapNotes, setSoapNotes] = useState<SessionNote[]>([]);
+  const [goals, setGoals]         = useState<Goal[]>([]);
+  const [balance, setBalance]     = useState(0);
+  const [loading, setLoading]     = useState(true);
 
-  const [tab, setTab] = useState<"notes" | "files">("notes");
+  const [tab, setTab] = useState<Tab>("soap");
+
+  // General note form
   const [showNoteForm, setShowNoteForm] = useState(false);
-  const [editNoteId, setEditNoteId] = useState<string | null>(null);
-  const [noteForm, setNoteForm] = useState({ title: "", content: "", category: "general" });
-  const [savingNote, setSavingNote] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [editNoteId, setEditNoteId]     = useState<string | null>(null);
+  const [noteForm, setNoteForm]         = useState({ title: "", content: "", category: "general" });
+  const [savingNote, setSavingNote]     = useState(false);
+
+  // SOAP note form
+  const [showSoapForm, setShowSoapForm] = useState(false);
+  const [editSoapId, setEditSoapId]     = useState<string | null>(null);
+  const [soapForm, setSoapForm]         = useState({
+    session_date: new Date().toISOString().split("T")[0],
+    subjective: "", objective: "", assessment: "", plan: "",
+  });
+  const [savingSoap, setSavingSoap] = useState(false);
+  const [expandedSoap, setExpandedSoap] = useState<string | null>(null);
+
+  // Goal form
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [editGoalId, setEditGoalId]     = useState<string | null>(null);
+  const [goalForm, setGoalForm]         = useState({
+    description: "", category: "Fine Motor", target_date: "", progress: 0, notes: "",
+  });
+  const [savingGoal, setSavingGoal] = useState(false);
+
+  // File upload
+  const [uploading, setUploading]       = useState(false);
   const [fileCategory, setFileCategory] = useState("evaluation");
-  const [fileNote, setFileNote] = useState("");
+  const [fileNote, setFileNote]         = useState("");
+
+  // Diagnosis code input
+  const [diagInput, setDiagInput] = useState("");
+  const [savingDiag, setSavingDiag] = useState(false);
 
   const load = useCallback(async () => {
     const { data: c } = await supabase.from("clients").select("*").eq("id", clientId).single();
     if (!c) { setLoading(false); return; }
     setClient(c);
 
-    const [notesRes, filesRes, chargesRes, paymentsRes] = await Promise.all([
+    const [notesRes, filesRes, chargesRes, paymentsRes, soapRes, goalsRes] = await Promise.all([
       supabase.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
       supabase.from("client_files").select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
-      supabase.from("charges").select("amount").eq("client_id", clientId),
-      supabase.from("payments").select("amount").eq("client_id", clientId),
+      supabase.from("charges").select("amount").eq("client_id", clientId).is("deleted_at", null),
+      supabase.from("payments").select("amount").eq("client_id", clientId).is("deleted_at", null),
+      supabase.from("session_notes").select("*").eq("client_id", clientId).order("session_date", { ascending: false }),
+      supabase.from("goals").select("*").eq("client_id", clientId).order("created_at"),
     ]);
 
     setNotes(notesRes.data || []);
     setFiles(filesRes.data || []);
-    const totalCharges = (chargesRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+    setSoapNotes(soapRes.data || []);
+    setGoals(goalsRes.data || []);
+
+    const totalCharges  = (chargesRes.data  || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
     const totalPayments = (paymentsRes.data || []).reduce((s: number, r: any) => s + Number(r.amount), 0);
     setBalance(totalCharges - totalPayments);
 
     const [tRes, sRes] = await Promise.all([
-      c.therapist_id ? supabase.from("therapists").select("*").eq("id", c.therapist_id).single() : Promise.resolve({ data: null }),
+      c.therapist_id    ? supabase.from("therapists").select("*").eq("id", c.therapist_id).single()   : Promise.resolve({ data: null }),
       c.service_type_id ? supabase.from("service_types").select("*").eq("id", c.service_type_id).single() : Promise.resolve({ data: null }),
     ]);
     setTherapist(tRes.data);
@@ -78,90 +118,100 @@ export default function ClientDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── General notes ──────────────────────────────────────────────────────────
   const saveNote = async () => {
     if (!noteForm.title.trim()) return;
     setSavingNote(true);
-    const payload = {
-      client_id: clientId,
-      title: noteForm.title.trim(),
-      content: noteForm.content.trim() || null,
-      category: noteForm.category,
-      updated_at: new Date().toISOString(),
-    };
-    if (editNoteId) {
-      await supabase.from("client_notes").update(payload).eq("id", editNoteId);
-    } else {
-      await supabase.from("client_notes").insert(payload);
-    }
-    setSavingNote(false);
-    setShowNoteForm(false);
-    load();
+    const payload = { client_id: clientId, title: noteForm.title.trim(), content: noteForm.content.trim() || null, category: noteForm.category, updated_at: new Date().toISOString() };
+    if (editNoteId) { await supabase.from("client_notes").update(payload).eq("id", editNoteId); }
+    else            { await supabase.from("client_notes").insert(payload); }
+    setSavingNote(false); setShowNoteForm(false); load();
   };
-
   const deleteNote = async (id: string) => {
     if (!confirm("Delete this note?")) return;
-    await supabase.from("client_notes").delete().eq("id", id);
-    load();
+    await supabase.from("client_notes").delete().eq("id", id); load();
   };
 
+  // ── SOAP notes ─────────────────────────────────────────────────────────────
+  const saveSoap = async () => {
+    if (!soapForm.session_date) return;
+    setSavingSoap(true);
+    const payload = { client_id: clientId, session_date: soapForm.session_date, subjective: soapForm.subjective.trim() || null, objective: soapForm.objective.trim() || null, assessment: soapForm.assessment.trim() || null, plan: soapForm.plan.trim() || null, updated_at: new Date().toISOString() };
+    if (editSoapId) { await supabase.from("session_notes").update(payload).eq("id", editSoapId); }
+    else            { await supabase.from("session_notes").insert(payload); }
+    // Mark matching SOAP task complete
+    if (!editSoapId) {
+      await supabase.from("tasks").update({ completed_at: new Date().toISOString() })
+        .eq("client_id", clientId).eq("task_type", "soap_note").eq("due_date", soapForm.session_date).is("completed_at", null);
+    }
+    setSavingSoap(false); setShowSoapForm(false); load();
+  };
+  const deleteSoap = async (id: string) => {
+    if (!confirm("Delete this SOAP note?")) return;
+    await supabase.from("session_notes").delete().eq("id", id); load();
+  };
+
+  // ── Goals ──────────────────────────────────────────────────────────────────
+  const saveGoal = async () => {
+    if (!goalForm.description.trim()) return;
+    setSavingGoal(true);
+    const payload = { client_id: clientId, description: goalForm.description.trim(), category: goalForm.category, target_date: goalForm.target_date || null, progress: goalForm.progress, notes: goalForm.notes.trim() || null, updated_at: new Date().toISOString() };
+    if (editGoalId) { await supabase.from("goals").update(payload).eq("id", editGoalId); }
+    else            { await supabase.from("goals").insert(payload); }
+    setSavingGoal(false); setShowGoalForm(false); load();
+  };
+  const updateGoalStatus = async (id: string, status: string) => {
+    await supabase.from("goals").update({ status, updated_at: new Date().toISOString() }).eq("id", id); load();
+  };
+  const updateGoalProgress = async (id: string, progress: number) => {
+    await supabase.from("goals").update({ progress, updated_at: new Date().toISOString() }).eq("id", id); load();
+  };
+
+  // ── Diagnosis codes ────────────────────────────────────────────────────────
+  const addDiagCode = async () => {
+    const code = diagInput.trim().toUpperCase();
+    if (!code || !client) return;
+    const existing = client.diagnosis_codes || [];
+    if (existing.includes(code)) { setDiagInput(""); return; }
+    setSavingDiag(true);
+    await supabase.from("clients").update({ diagnosis_codes: [...existing, code] }).eq("id", clientId);
+    setDiagInput(""); setSavingDiag(false); load();
+  };
+  const removeDiagCode = async (code: string) => {
+    if (!client) return;
+    const updated = (client.diagnosis_codes || []).filter((c) => c !== code);
+    await supabase.from("clients").update({ diagnosis_codes: updated }).eq("id", clientId); load();
+  };
+
+  // ── Files ──────────────────────────────────────────────────────────────────
   const ALLOWED_TYPES: Record<string, string> = {
-    "application/pdf": "pdf",
-    "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp",
-    "application/msword": "doc",
+    "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png",
+    "image/gif": "gif", "image/webp": "webp", "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.ms-excel": "xls",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     "text/plain": "txt",
   };
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (!ALLOWED_TYPES[file.type]) {
-      alert("File type not allowed. Accepted: PDF, images, Word docs, Excel, plain text.");
-      e.target.value = "";
-      return;
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      alert("File is too large. Maximum size is 10 MB.");
-      e.target.value = "";
-      return;
-    }
-
+    if (!ALLOWED_TYPES[file.type]) { alert("File type not allowed."); e.target.value = ""; return; }
+    if (file.size > MAX_FILE_SIZE) { alert("File too large — max 10 MB."); e.target.value = ""; return; }
     setUploading(true);
-    // Use crypto.randomUUID() to avoid filename collisions
-    const ext = ALLOWED_TYPES[file.type];
+    const ext  = ALLOWED_TYPES[file.type];
     const path = `${clientId}/${crypto.randomUUID()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from("client-files").upload(path, file);
-    if (uploadError) {
-      alert("Upload failed: " + uploadError.message);
-      setUploading(false);
-      return;
-    }
-    await supabase.from("client_files").insert({
-      client_id: clientId,
-      file_name: file.name,
-      file_type: file.type,
-      file_size: file.size,
-      storage_path: path,
-      category: fileCategory,
-      notes: fileNote.trim() || null,
-    });
-    setFileNote("");
-    setUploading(false);
-    e.target.value = "";
-    load();
+    if (uploadError) { alert("Upload failed: " + uploadError.message); setUploading(false); return; }
+    await supabase.from("client_files").insert({ client_id: clientId, file_name: file.name, file_type: file.type, file_size: file.size, storage_path: path, category: fileCategory, notes: fileNote.trim() || null });
+    setFileNote(""); setUploading(false); e.target.value = ""; load();
   };
-
   const deleteFile = async (f: ClientFile) => {
     if (!confirm(`Delete "${f.file_name}"?`)) return;
     await supabase.storage.from("client-files").remove([f.storage_path]);
-    await supabase.from("client_files").delete().eq("id", f.id);
-    load();
+    await supabase.from("client_files").delete().eq("id", f.id); load();
   };
-
   const openFile = async (path: string) => {
     const { data, error } = await supabase.storage.from("client-files").createSignedUrl(path, 300);
     if (error || !data?.signedUrl) { alert("Could not open file."); return; }
@@ -176,22 +226,60 @@ export default function ClientDetailPage() {
 
   const getCatBadge = (cat: string) => NOTE_CATEGORIES.find((c) => c.value === cat) || NOTE_CATEGORIES[5];
 
+  const visibleTabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "soap",      label: "SOAP Notes",  count: soapNotes.length },
+    { id: "goals",     label: "Goals",       count: goals.filter((g) => g.status === "active").length },
+    ...(!isTherapist ? [{ id: "insurance" as Tab, label: "Insurance" }] : []),
+    { id: "notes",     label: "Notes",       count: notes.length },
+    { id: "files",     label: "Files",       count: files.length },
+  ];
+
   if (loading) return <div className="text-ink-400 py-12 text-center">Loading...</div>;
   if (!client) return <div className="text-ink-400 py-12 text-center">Client not found.</div>;
+
+  const authDaysLeft = client.auth_expiration
+    ? Math.ceil((new Date(client.auth_expiration).getTime() - Date.now()) / 86400000)
+    : null;
 
   return (
     <div>
       <button onClick={() => router.push("/clients")} className="btn-ghost btn-sm mb-4">&larr; Back to Clients</button>
 
-      <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-5 flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold">{client.first_name} {client.last_name}</h1>
-          <div className="text-sm text-ink-500 mt-1 space-x-3">
+          <div className="text-sm text-ink-500 mt-1 flex flex-wrap gap-x-3">
             {client.guardian && <span>Guardian: {client.guardian}</span>}
-            {client.phone && <span>{client.phone}</span>}
-            {client.email && <span>{client.email}</span>}
+            {client.phone    && <span>{client.phone}</span>}
+            {client.email    && <span>{client.email}</span>}
           </div>
           {client.address && <div className="text-sm text-ink-400 mt-0.5">{client.address}</div>}
+          {/* Diagnosis codes */}
+          {(client.diagnosis_codes?.length > 0) && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {client.diagnosis_codes.map((code) => (
+                <span key={code} className="flex items-center gap-1 bg-ink-900 text-white text-xs font-mono px-2 py-0.5 rounded-lg">
+                  {code}
+                  {!isTherapist && (
+                    <button onClick={() => removeDiagCode(code)} className="text-white/60 hover:text-white ml-0.5">×</button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          {!isTherapist && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <input
+                className="input-field py-1 text-xs w-28"
+                placeholder="ICD-10 code"
+                value={diagInput}
+                onChange={(e) => setDiagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDiagCode(); } }}
+              />
+              <button onClick={addDiagCode} disabled={savingDiag || !diagInput.trim()} className="btn-outline btn-sm text-xs">Add</button>
+            </div>
+          )}
         </div>
         {!isTherapist && (
           <div className="text-right">
@@ -203,27 +291,27 @@ export default function ClientDetailPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Therapist</div>
           {therapist ? (
             <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: therapist.color }} />
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: therapist.color }} />
               <span className="font-semibold text-sm">{therapist.name}</span>
             </div>
-          ) : <span className="text-ink-400 text-sm">&mdash;</span>}
+          ) : <span className="text-ink-400 text-sm">—</span>}
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Service</div>
           <div className="font-semibold text-sm">{serviceType?.name || "—"}</div>
-          {!isTherapist && serviceType && <div className="text-xs text-ink-400">${Number(serviceType.rate).toFixed(2)} / session</div>}
+          {!isTherapist && serviceType && <div className="text-xs text-ink-400">${Number(serviceType.rate).toFixed(2)}/session</div>}
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Schedule</div>
           <div className="font-semibold text-sm">
             {client.session_days?.length > 0 ? client.session_days.map((d) => DAYS[d]).join(", ") : "—"}
           </div>
-          {serviceType && <div className="text-xs text-ink-400">{serviceType.duration} min sessions</div>}
         </div>
         <div className="card p-4">
           <div className="text-xs text-ink-400 uppercase tracking-wide font-semibold mb-1">Since</div>
@@ -232,15 +320,233 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 bg-surface-100 rounded-lg p-1 w-fit mb-4">
-        {(["notes", "files"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-5 py-2 rounded-md text-sm font-semibold transition-all ${tab === t ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
-            {t === "notes" ? `Notes (${notes.length})` : `Files (${files.length})`}
+      {/* Auth expiry warning */}
+      {!isTherapist && authDaysLeft !== null && authDaysLeft <= 30 && (
+        <div className={`rounded-xl px-4 py-3 mb-4 text-sm font-semibold border ${authDaysLeft <= 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+          {authDaysLeft <= 0
+            ? `⚠ Insurance authorization expired ${Math.abs(authDaysLeft)} days ago`
+            : `⚠ Insurance authorization expires in ${authDaysLeft} day${authDaysLeft !== 1 ? "s" : ""}`}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-surface-100 rounded-lg p-1 w-fit mb-5 flex-wrap">
+        {visibleTabs.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${tab === t.id ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"}`}>
+            {t.label}{t.count !== undefined ? ` (${t.count})` : ""}
           </button>
         ))}
       </div>
 
+      {/* ── SOAP Notes tab ─────────────────────────────────────────────────── */}
+      {tab === "soap" && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm text-ink-500">{soapNotes.length} note{soapNotes.length !== 1 ? "s" : ""}</div>
+            <button onClick={() => { setSoapForm({ session_date: new Date().toISOString().split("T")[0], subjective: "", objective: "", assessment: "", plan: "" }); setEditSoapId(null); setShowSoapForm(true); }} className="btn-primary btn-sm">
+              + New SOAP Note
+            </button>
+          </div>
+
+          {showSoapForm && (
+            <div className="card p-5 mb-4">
+              <h3 className="font-semibold mb-4">{editSoapId ? "Edit" : "New"} SOAP Note</h3>
+              <div className="mb-4">
+                <label className="label">Session Date *</label>
+                <input type="date" className="input-field w-44" value={soapForm.session_date} onChange={(e) => setSoapForm({ ...soapForm, session_date: e.target.value })} />
+              </div>
+              <div className="space-y-4">
+                {[
+                  { key: "subjective" as const, label: "S — Subjective", hint: "What the client/parent reports: complaints, functional concerns, mood" },
+                  { key: "objective"  as const, label: "O — Objective",  hint: "Measurable observations: range of motion, task performance, standardized scores" },
+                  { key: "assessment" as const, label: "A — Assessment", hint: "Clinical interpretation: progress toward goals, barriers, clinical reasoning" },
+                  { key: "plan"       as const, label: "P — Plan",       hint: "Next session focus, home exercise program, referrals, frequency changes" },
+                ].map(({ key, label, hint }) => (
+                  <div key={key}>
+                    <label className="label">{label}</label>
+                    <div className="text-xs text-ink-400 mb-1">{hint}</div>
+                    <textarea className="input-field" rows={3} value={soapForm[key]}
+                      onChange={(e) => setSoapForm({ ...soapForm, [key]: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={saveSoap} disabled={savingSoap || !soapForm.session_date} className="btn-primary btn-sm">
+                  {savingSoap ? "Saving..." : editSoapId ? "Update Note" : "Save Note"}
+                </button>
+                <button onClick={() => setShowSoapForm(false)} className="btn-ghost btn-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {soapNotes.length === 0 && !showSoapForm ? (
+            <div className="card p-10 text-center text-ink-400">No SOAP notes yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {soapNotes.map((n) => {
+                const isOpen = expandedSoap === n.id;
+                return (
+                  <div key={n.id} className="card overflow-hidden">
+                    <button className="w-full px-5 py-3 flex items-center justify-between hover:bg-surface-50 transition-colors text-left" onClick={() => setExpandedSoap(isOpen ? null : n.id)}>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-sm">{formatDate(n.session_date)}</span>
+                        <span className="text-xs text-ink-400">SOAP Note</span>
+                        {[n.subjective, n.objective, n.assessment, n.plan].filter(Boolean).length < 4 && (
+                          <span className="badge badge-amber text-[10px]">Incomplete</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-ink-400">{formatDateTime(n.created_at)}</span>
+                        <span className="text-ink-400">{isOpen ? "▲" : "▼"}</span>
+                      </div>
+                    </button>
+
+                    {isOpen && (
+                      <div className="px-5 pb-4 border-t border-surface-200">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                          {[
+                            { label: "S — Subjective", value: n.subjective },
+                            { label: "O — Objective",  value: n.objective },
+                            { label: "A — Assessment", value: n.assessment },
+                            { label: "P — Plan",       value: n.plan },
+                          ].map(({ label, value }) => (
+                            <div key={label}>
+                              <div className="text-xs font-bold text-ink-500 uppercase tracking-wide mb-1">{label}</div>
+                              <div className="text-sm text-ink-700 bg-surface-50 rounded-lg p-3 min-h-[60px] whitespace-pre-wrap">
+                                {value || <span className="text-ink-300 italic">Not recorded</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={() => { setSoapForm({ session_date: n.session_date, subjective: n.subjective || "", objective: n.objective || "", assessment: n.assessment || "", plan: n.plan || "" }); setEditSoapId(n.id); setShowSoapForm(true); }} className="btn-ghost btn-sm">Edit</button>
+                          <button onClick={() => deleteSoap(n.id)} className="btn-ghost btn-sm text-red-500">Delete</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Goals tab ──────────────────────────────────────────────────────── */}
+      {tab === "goals" && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm text-ink-500">
+              {goals.filter((g) => g.status === "active").length} active · {goals.filter((g) => g.status === "mastered").length} mastered
+            </div>
+            <button onClick={() => { setGoalForm({ description: "", category: "Fine Motor", target_date: "", progress: 0, notes: "" }); setEditGoalId(null); setShowGoalForm(true); }} className="btn-primary btn-sm">
+              + Add Goal
+            </button>
+          </div>
+
+          {showGoalForm && (
+            <div className="card p-5 mb-4">
+              <h3 className="font-semibold mb-4">{editGoalId ? "Edit" : "Add"} Goal</h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="label">Goal Description *</label>
+                  <textarea className="input-field" rows={2} placeholder="e.g. Client will improve bilateral coordination to complete age-appropriate cutting tasks with 80% accuracy" value={goalForm.description} onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Category</label>
+                    <select className="input-field" value={goalForm.category} onChange={(e) => setGoalForm({ ...goalForm, category: e.target.value })}>
+                      {GOAL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Target Date</label>
+                    <input type="date" className="input-field" value={goalForm.target_date} onChange={(e) => setGoalForm({ ...goalForm, target_date: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Initial Progress: {goalForm.progress}%</label>
+                  <input type="range" min={0} max={100} step={5} className="w-full" value={goalForm.progress} onChange={(e) => setGoalForm({ ...goalForm, progress: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="label">Notes</label>
+                  <input className="input-field" placeholder="Baseline data, measurement criteria..." value={goalForm.notes} onChange={(e) => setGoalForm({ ...goalForm, notes: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={saveGoal} disabled={savingGoal || !goalForm.description.trim()} className="btn-primary btn-sm">
+                  {savingGoal ? "Saving..." : editGoalId ? "Update Goal" : "Add Goal"}
+                </button>
+                <button onClick={() => setShowGoalForm(false)} className="btn-ghost btn-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {goals.length === 0 && !showGoalForm ? (
+            <div className="card p-10 text-center text-ink-400">No goals yet. Add goals to track client progress.</div>
+          ) : (
+            <div className="space-y-3">
+              {(["active", "mastered", "discontinued"] as const).map((status) => {
+                const statusGoals = goals.filter((g) => g.status === status);
+                if (statusGoals.length === 0) return null;
+                return (
+                  <div key={status}>
+                    <div className="text-xs font-bold text-ink-400 uppercase tracking-wide mb-2 px-1">
+                      {status === "active" ? "Active Goals" : status === "mastered" ? "Mastered ✓" : "Discontinued"}
+                    </div>
+                    {statusGoals.map((g) => (
+                      <div key={g.id} className={`card p-4 mb-2 ${status !== "active" ? "opacity-60" : ""}`}>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex-1">
+                            <div className="font-semibold text-sm">{g.description}</div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="badge badge-blue text-[10px]">{g.category}</span>
+                              {g.target_date && <span className="text-xs text-ink-400">Target: {formatDate(g.target_date)}</span>}
+                            </div>
+                            {g.notes && <div className="text-xs text-ink-400 mt-1 italic">{g.notes}</div>}
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            {status === "active" && (
+                              <button onClick={() => updateGoalStatus(g.id, "mastered")} className="btn-ghost btn-sm text-emerald-600">✓ Mastered</button>
+                            )}
+                            <button onClick={() => { setGoalForm({ description: g.description, category: g.category, target_date: g.target_date || "", progress: g.progress, notes: g.notes || "" }); setEditGoalId(g.id); setShowGoalForm(true); }} className="btn-ghost btn-sm">Edit</button>
+                            {status === "active" && (
+                              <button onClick={() => updateGoalStatus(g.id, "discontinued")} className="btn-ghost btn-sm text-red-400">Drop</button>
+                            )}
+                          </div>
+                        </div>
+                        {status === "active" && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-ink-500">Progress</span>
+                              <span className="text-xs font-bold text-ink-700">{g.progress}%</span>
+                            </div>
+                            <input type="range" min={0} max={100} step={5} className="w-full"
+                              value={g.progress}
+                              onChange={(e) => updateGoalProgress(g.id, Number(e.target.value))}
+                            />
+                            <div className="w-full bg-surface-200 rounded-full h-1.5 mt-1">
+                              <div className="bg-brand-600 h-1.5 rounded-full transition-all" style={{ width: `${g.progress}%` }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Insurance tab ──────────────────────────────────────────────────── */}
+      {tab === "insurance" && !isTherapist && (
+        <InsuranceTab client={client} clientId={clientId} onSaved={load} />
+      )}
+
+      {/* ── General notes tab ──────────────────────────────────────────────── */}
       {tab === "notes" && (
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -251,40 +557,26 @@ export default function ClientDetailPage() {
               </button>
             )}
           </div>
-
           {showNoteForm && (
             <div className="card p-5 mb-4">
               <h3 className="font-semibold mb-4">{editNoteId ? "Edit" : "New"} Note</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="label">Title *</label>
-                  <input className="input-field" placeholder="e.g. Initial Evaluation Notes" value={noteForm.title}
-                    onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Category</label>
-                  <select className="input-field" value={noteForm.category}
-                    onChange={(e) => setNoteForm({ ...noteForm, category: e.target.value })}>
+                <div><label className="label">Title *</label><input className="input-field" value={noteForm.title} onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })} /></div>
+                <div><label className="label">Category</label>
+                  <select className="input-field" value={noteForm.category} onChange={(e) => setNoteForm({ ...noteForm, category: e.target.value })}>
                     {NOTE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
               </div>
-              <div className="mb-4">
-                <label className="label">Content</label>
-                <textarea className="input-field" rows={6} placeholder="Type your notes here..."
-                  value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} />
-              </div>
+              <div className="mb-4"><label className="label">Content</label><textarea className="input-field" rows={5} value={noteForm.content} onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })} /></div>
               <div className="flex gap-2">
-                <button onClick={saveNote} disabled={savingNote || !noteForm.title.trim()} className="btn-primary btn-sm">
-                  {savingNote ? "Saving..." : editNoteId ? "Update Note" : "Save Note"}
-                </button>
+                <button onClick={saveNote} disabled={savingNote || !noteForm.title.trim()} className="btn-primary btn-sm">{savingNote ? "Saving..." : editNoteId ? "Update" : "Save"}</button>
                 <button onClick={() => setShowNoteForm(false)} className="btn-ghost btn-sm">Cancel</button>
               </div>
             </div>
           )}
-
-          {notes.length === 0 ? (
-            <div className="card p-10 text-center text-ink-400">No notes yet. Add your first note above.</div>
+          {notes.length === 0 && !showNoteForm ? (
+            <div className="card p-10 text-center text-ink-400">No notes yet.</div>
           ) : (
             <div className="space-y-3">
               {notes.map((n) => {
@@ -293,7 +585,7 @@ export default function ClientDetailPage() {
                   <div key={n.id} className="card p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold">{n.title}</span>
                           <span className={`badge ${cat.color}`}>{cat.label}</span>
                         </div>
@@ -306,9 +598,7 @@ export default function ClientDetailPage() {
                         </div>
                       )}
                     </div>
-                    {n.content && (
-                      <div className="text-sm text-ink-700 whitespace-pre-wrap bg-surface-50 rounded-lg p-3 mt-2">{n.content}</div>
-                    )}
+                    {n.content && <div className="text-sm text-ink-700 whitespace-pre-wrap bg-surface-50 rounded-lg p-3 mt-2">{n.content}</div>}
                   </div>
                 );
               })}
@@ -317,85 +607,128 @@ export default function ClientDetailPage() {
         </div>
       )}
 
+      {/* ── Files tab ──────────────────────────────────────────────────────── */}
       {tab === "files" && (
         <div>
           <div className="card p-5 mb-4">
             <h3 className="font-semibold mb-3">Upload File</h3>
             <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <label className="label">Category</label>
+              <div><label className="label">Category</label>
                 <select className="input-field w-40" value={fileCategory} onChange={(e) => setFileCategory(e.target.value)}>
                   {FILE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="label">Note (optional)</label>
-                <input className="input-field" placeholder="Brief description..." value={fileNote}
-                  onChange={(e) => setFileNote(e.target.value)} />
-              </div>
+              <div className="flex-1 min-w-[200px]"><label className="label">Note (optional)</label><input className="input-field" placeholder="Brief description..." value={fileNote} onChange={(e) => setFileNote(e.target.value)} /></div>
               <div>
                 <label className={`btn-primary btn-sm inline-flex items-center gap-2 cursor-pointer ${uploading ? "opacity-50" : ""}`}>
                   {uploading ? "Uploading..." : "Choose File"}
-                  <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading}
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.txt,.csv,.xlsx" />
+                  <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt" onChange={handleFileUpload} disabled={uploading} />
                 </label>
               </div>
             </div>
-            <div className="text-xs text-ink-400 mt-2">Accepted: PDF, Word, Images, Excel, CSV, Text</div>
-          </div>
-
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-ink-500">{files.length} file{files.length !== 1 ? "s" : ""}</div>
+            <div className="text-xs text-ink-400 mt-2">PDF, images, Word, Excel — max 10 MB</div>
           </div>
 
           {files.length === 0 ? (
             <div className="card p-10 text-center text-ink-400">No files uploaded yet.</div>
           ) : (
             <div className="card overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-surface-200">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b border-surface-200">
                     <th className="table-header">File</th>
                     <th className="table-header">Category</th>
                     <th className="table-header">Size</th>
                     <th className="table-header">Uploaded</th>
-                    <th className="table-header">Note</th>
                     <th className="table-header text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {files.map((f) => {
-                    const icon = f.file_type?.includes("pdf") ? "📄" :
-                      f.file_type?.includes("image") || ["png","jpg","jpeg"].some(ext => f.file_type?.includes(ext)) ? "🖼️" :
-                      f.file_type?.includes("doc") ? "📝" :
-                      ["sheet","csv","xlsx"].some(t => f.file_type?.includes(t)) ? "📊" : "📎";
-                    return (
+                  </tr></thead>
+                  <tbody>
+                    {files.map((f) => (
                       <tr key={f.id} className="table-row">
                         <td className="table-cell">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{icon}</span>
-                            <span className="font-medium text-sm">{f.file_name}</span>
-                          </div>
+                          <div className="font-medium">{f.file_name}</div>
+                          {f.notes && <div className="text-xs text-ink-400">{f.notes}</div>}
                         </td>
-                        <td className="table-cell">
-                          <span className="badge badge-blue">{FILE_CATEGORIES.find((c) => c.value === f.category)?.label || f.category}</span>
-                        </td>
-                        <td className="table-cell text-ink-500 text-sm">{f.file_size ? formatSize(f.file_size) : "—"}</td>
-                        <td className="table-cell text-ink-500 text-sm">{formatDate(f.created_at)}</td>
-                        <td className="table-cell text-ink-500 text-sm">{f.notes || "—"}</td>
+                        <td className="table-cell"><span className="badge badge-gray">{f.category}</span></td>
+                        <td className="table-cell text-ink-500">{formatSize(f.file_size)}</td>
+                        <td className="table-cell text-ink-500">{formatDateTime(f.created_at)}</td>
                         <td className="table-cell text-right">
                           <button onClick={() => openFile(f.storage_path)} className="btn-ghost btn-sm">View</button>
                           <button onClick={() => deleteFile(f)} className="btn-ghost btn-sm text-red-500">Delete</button>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Insurance Tab component ───────────────────────────────────────────────────
+function InsuranceTab({ client, clientId, onSaved }: { client: Client; clientId: string; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    insurance_company: client.insurance_company || "",
+    policy_number:     client.policy_number     || "",
+    group_number:      client.group_number      || "",
+    subscriber_name:   client.subscriber_name   || "",
+    subscriber_dob:    client.subscriber_dob    || "",
+    auth_number:       client.auth_number       || "",
+    authorized_visits: client.authorized_visits != null ? String(client.authorized_visits) : "",
+    auth_expiration:   client.auth_expiration   || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]   = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    await supabase.from("clients").update({
+      insurance_company: form.insurance_company.trim() || null,
+      policy_number:     form.policy_number.trim()     || null,
+      group_number:      form.group_number.trim()      || null,
+      subscriber_name:   form.subscriber_name.trim()   || null,
+      subscriber_dob:    form.subscriber_dob            || null,
+      auth_number:       form.auth_number.trim()       || null,
+      authorized_visits: form.authorized_visits ? parseInt(form.authorized_visits) : null,
+      auth_expiration:   form.auth_expiration           || null,
+    }).eq("id", clientId);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    onSaved();
+  };
+
+  const f = (key: keyof typeof form, label: string, type = "text", hint?: string) => (
+    <div key={key}>
+      <label className="label">{label}</label>
+      <input className="input-field" type={type} value={form[key]}
+        onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+      {hint && <div className="text-xs text-ink-400 mt-1">{hint}</div>}
+    </div>
+  );
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="font-semibold">Insurance Information</h3>
+        <button onClick={save} disabled={saving} className="btn-primary btn-sm">
+          {saving ? "Saving..." : saved ? "✓ Saved" : "Save"}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {f("insurance_company", "Insurance Company")}
+        {f("policy_number",     "Policy Number")}
+        {f("group_number",      "Group Number")}
+        {f("subscriber_name",   "Subscriber Name", "text", "Name on the insurance card")}
+        {f("subscriber_dob",    "Subscriber Date of Birth", "date")}
+        {f("auth_number",       "Authorization Number")}
+        {f("authorized_visits", "Authorized Visits", "number", "Total visits approved")}
+        {f("auth_expiration",   "Auth Expiration Date", "date")}
+      </div>
     </div>
   );
 }
